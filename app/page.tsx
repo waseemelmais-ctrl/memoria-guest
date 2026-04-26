@@ -9,7 +9,7 @@ const CLOUDINARY_UPLOAD_PRESET = 'photo_slideshow';
 
 export default function GuestPage() {
   const [eventId, setEventId] = useState('');
-  const [screen, setScreen] = useState<'home' | 'upload' | 'condolences' | 'events'>('home');
+  const [screen, setScreen] = useState<'home' | 'upload' | 'condolences' | 'events' | 'joincode'>('home');
   const [guestName, setGuestName] = useState('');
   const [message, setMessage] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
@@ -176,6 +176,24 @@ export default function GuestPage() {
 
         {screen === 'home' && (
           <div style={styles.homeButtons}>
+            <div style={styles.joinBanner}>
+              <p style={styles.joinTitle}>Have the Memoria App?</p>
+              <p style={styles.joinSubtitle}>Join this tribute directly in the app</p>
+              <button
+                style={styles.btnJoin}
+                onClick={() => {
+                  window.location.href = `memoria://join/${eventId}`;
+                  setTimeout(() => { setScreen('joincode'); }, 1500);
+                }}
+              >
+                Open in Memoria App
+              </button>
+              <button style={styles.btnCodeOnly} onClick={() => setScreen('joincode')}>
+                View Join Code
+              </button>
+            </div>
+            <div style={styles.orDivider} />
+            <p style={styles.orText}>Or continue as web guest</p>
             <button style={styles.btnPrimary} onClick={() => { setScreen('upload'); setSuccess(''); setError(''); }}>
               📷 Add Photos
             </button>
@@ -185,6 +203,30 @@ export default function GuestPage() {
             <button style={styles.btnSecondary} onClick={() => { setScreen('events'); setSuccess(''); setError(''); }}>
               📅 View Events
             </button>
+          </div>
+        )}
+
+        {screen === 'joincode' && (
+          <div style={styles.form}>
+            <h3 style={styles.formTitle}>Join in the App</h3>
+            <p style={styles.joinInstructions}>
+              1. Download <strong style={{color: '#c9a96e'}}>Memoria</strong> from the App Store{'\n'}
+              2. Sign up or sign in{'\n'}
+              3. Tap "Join a Tribute" and enter this code:
+            </p>
+            <div style={styles.joinCodeBox}>
+              <p style={styles.joinCode}>{eventId}</p>
+              <button
+                style={styles.copyBtn}
+                onClick={() => {
+                  navigator.clipboard.writeText(eventId);
+                  alert('Code copied!');
+                }}
+              >
+                Copy Code
+              </button>
+            </div>
+            <button style={{...styles.btnSecondary, marginTop: '20px'}} onClick={() => setScreen('home')}>Back</button>
           </div>
         )}
 
@@ -273,7 +315,7 @@ export default function GuestPage() {
         {screen === 'events' && (
           <div style={styles.form}>
             <h3 style={styles.formTitle}>Events & Schedule</h3>
-            <button style={{ ...styles.btnSecondary, marginBottom: '20px' }} onClick={() => setScreen('home')}>Back</button>
+            <button style={{...styles.btnSecondary, marginBottom: '20px'}} onClick={() => setScreen('home')}>Back</button>
             {events.length === 0 && (
               <p style={styles.emptyText}>No events have been added yet.</p>
             )}
@@ -302,6 +344,13 @@ const styles: { [key: string]: React.CSSProperties } = {
   tributeName: { color: '#e8e0d0', fontSize: '26px', fontWeight: 300, letterSpacing: '2px', marginBottom: '8px' },
   divider: { width: '40px', height: '1px', backgroundColor: '#c9a96e', margin: '16px auto', opacity: 0.5 },
   homeButtons: { display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px' },
+  joinBanner: { backgroundColor: '#1a1506', border: '1px solid #c9a96e', borderRadius: '14px', padding: '20px', marginBottom: '4px' },
+  joinTitle: { color: '#c9a96e', fontSize: '14px', fontWeight: 600, marginBottom: '4px' },
+  joinSubtitle: { color: '#888', fontSize: '12px', marginBottom: '14px' },
+  btnJoin: { backgroundColor: '#c9a96e', color: '#0a0a0a', border: 'none', borderRadius: '10px', padding: '12px 20px', fontSize: '13px', letterSpacing: '1px', cursor: 'pointer', fontWeight: 600, width: '100%', marginBottom: '8px' },
+  btnCodeOnly: { backgroundColor: 'transparent', color: '#c9a96e', border: '1px solid #c9a96e', borderRadius: '10px', padding: '10px 20px', fontSize: '12px', letterSpacing: '1px', cursor: 'pointer', width: '100%' },
+  orDivider: { height: '1px', backgroundColor: '#1e1e1e', margin: '4px 0' },
+  orText: { color: '#444', fontSize: '12px', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px', marginTop: '4px' },
   btnPrimary: { backgroundColor: '#c9a96e', color: '#0a0a0a', border: 'none', borderRadius: '12px', padding: '16px 24px', fontSize: '13px', letterSpacing: '2px', textTransform: 'uppercase', cursor: 'pointer', fontWeight: 600 },
   btnSecondary: { backgroundColor: 'transparent', color: '#555', border: '1px solid #222', borderRadius: '12px', padding: '14px 24px', fontSize: '13px', letterSpacing: '2px', textTransform: 'uppercase', cursor: 'pointer' },
   form: { textAlign: 'left', marginTop: '16px' },
@@ -327,4 +376,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   eventDate: { color: '#c9a96e', fontSize: '13px', marginBottom: '6px' },
   eventLocation: { color: '#666', fontSize: '13px', marginBottom: '4px' },
   eventNotes: { color: '#555', fontSize: '12px', lineHeight: 1.5 },
+  joinInstructions: { color: '#888', fontSize: '13px', lineHeight: 2, marginBottom: '20px', whiteSpace: 'pre-line' },
+  joinCodeBox: { backgroundColor: '#0a0a0a', border: '1px solid #c9a96e', borderRadius: '12px', padding: '20px', textAlign: 'center', marginBottom: '8px' },
+  joinCode: { color: '#c9a96e', fontSize: '13px', letterSpacing: '2px', marginBottom: '12px', wordBreak: 'break-all' },
+  copyBtn: { backgroundColor: 'transparent', color: '#c9a96e', border: '1px solid #c9a96e', borderRadius: '8px', padding: '8px 20px', fontSize: '11px', cursor: 'pointer', letterSpacing: '1px' },
 };
