@@ -2,10 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, onSnapshot } from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../firebase';
 
 const CLOUDINARY_CLOUD_NAME = 'djkxympk0';
 const CLOUDINARY_UPLOAD_PRESET = 'photo_slideshow';
+
+// Default reactions structure — must match what the app expects
+const DEFAULT_REACTIONS = { '❤️': 0, '🕊️': 0, '🙏': 0 };
 
 export default function GuestPage() {
   const [eventId, setEventId] = useState('');
@@ -19,11 +23,19 @@ export default function GuestPage() {
   const [tributeName, setTributeName] = useState('');
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [authReady, setAuthReady] = useState(false);
 
+  // Sign in anonymously so Firestore rules (request.auth != null) are satisfied
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get('event') || '';
-    setEventId(id);
+    const auth = getAuth();
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setAuthReady(true);
+      } else {
+        signInAnonymously(auth).catch(console.error);
+      }
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -87,20 +99,21 @@ export default function GuestPage() {
           url,
           eventId,
           uploadedBy: guestName.trim(),
-          message: message.trim(),
           uploadedAt: new Date().toISOString(),
-          pending: true,
         });
       }
+      // Only write a condolence if the guest actually typed a message
       if (message.trim()) {
         await addDoc(collection(db, 'condolences'), {
           eventId,
           name: guestName.trim(),
           message: message.trim(),
           createdAt: new Date().toISOString(),
+          reactions: DEFAULT_REACTIONS,
+          reactedBy: {},
         });
       }
-      setSuccess(`Thank you ${guestName}! Your photos have been added to the tribute.`);
+      setSuccess(`Thank you ${guestName}! Your photo${photos.length > 1 ? 's have' : ' has'} been added to the tribute.`);
       setPhotos([]);
       setMessage('');
       setGuestName('');
@@ -123,6 +136,8 @@ export default function GuestPage() {
         name: guestName.trim(),
         message: message.trim(),
         createdAt: new Date().toISOString(),
+        reactions: DEFAULT_REACTIONS,  // ← required by the app's condolence wall
+        reactedBy: {},                 // ← required by the app's condolence wall
       });
       setSuccess('Your message has been shared.');
       setMessage('');
@@ -178,7 +193,7 @@ export default function GuestPage() {
           <div style={styles.homeButtons}>
             <div style={styles.joinBanner}>
               <p style={styles.joinTitle}>Have the Memoria App?</p>
-              <p style={styles.joinSubtitle}>Join this tribute directly in the app</p>
+              <p style={styles.joinSubtitle}>Join this tribute directly in the app for the full experience</p>
               <button
                 style={styles.btnJoin}
                 onClick={() => {
@@ -210,9 +225,9 @@ export default function GuestPage() {
           <div style={styles.form}>
             <h3 style={styles.formTitle}>Join in the App</h3>
             <p style={styles.joinInstructions}>
-              1. Download <strong style={{color: '#c9a96e'}}>Memoria</strong> from the App Store{'\n'}
-              2. Sign up or sign in{'\n'}
-              3. Tap "Join a Tribute" and enter this code:
+              {'1. Download '}
+              <strong style={{color: '#c9a96e'}}>Memoria</strong>
+              {' from the App Store\n2. Sign up or sign in\n3. Tap "Join a Tribute" and enter this code:'}
             </p>
             <div style={styles.joinCodeBox}>
               <p style={styles.joinCode}>{eventId}</p>
@@ -241,25 +256,33 @@ export default function GuestPage() {
               value={guestName}
               onChange={e => setGuestName(e.target.value)}
             />
-            <label style={styles.inputLabel}>Message (optional)</label>
+            <label style={styles.inputLabel}>Leave a message (optional)</label>
             <textarea
               style={styles.textarea}
-              placeholder="Share a memory or kind words..."
+              placeholder="Share a memory or kind words — this will also appear on the condolence wall..."
               value={message}
               onChange={e => setMessage(e.target.value)}
               rows={3}
             />
             <label style={styles.inputLabel}>Select Photos</label>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              style={styles.fileInput}
-              onChange={e => setPhotos(Array.from(e.target.files || []))}
-            />
-            {photos.length > 0 && (
-              <p style={styles.photoCount}>{photos.length} photo(s) selected</p>
-            )}
+            <label style={styles.fileInputBox}>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                style={styles.fileInputHidden}
+                onChange={e => setPhotos(Array.from(e.target.files || []))}
+              />
+              <span style={styles.fileInputIcon}>📷</span>
+              <span style={styles.fileInputText}>
+                {photos.length > 0
+                  ? `${photos.length} photo${photos.length > 1 ? 's' : ''} selected`
+                  : 'Tap to choose photos'}
+              </span>
+              {photos.length === 0 && (
+                <span style={styles.fileInputNone}>No photos selected</span>
+              )}
+            </label>
             <div style={styles.formBtns}>
               <button style={styles.btnSecondary} onClick={() => setScreen('home')}>Back</button>
               <button style={styles.btnPrimary} onClick={handleUpload} disabled={uploading}>
@@ -273,6 +296,11 @@ export default function GuestPage() {
           <div style={styles.form}>
             <h3 style={styles.formTitle}>Condolence Wall</h3>
             {error && <p style={styles.errorText}>{error}</p>}
+            {success && (
+              <div style={{...styles.successBox, marginBottom: '20px'}}>
+                <p style={styles.successText}>{success}</p>
+              </div>
+            )}
             <label style={styles.inputLabel}>Your Name</label>
             <input
               style={styles.input}
@@ -358,7 +386,11 @@ const styles: { [key: string]: React.CSSProperties } = {
   inputLabel: { display: 'block', color: '#c9a96e', fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '8px' },
   input: { width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #222', borderRadius: '10px', padding: '14px', color: '#e8e0d0', fontSize: '14px', marginBottom: '16px', boxSizing: 'border-box' },
   textarea: { width: '100%', backgroundColor: '#0a0a0a', border: '1px solid #222', borderRadius: '10px', padding: '14px', color: '#e8e0d0', fontSize: '14px', marginBottom: '16px', boxSizing: 'border-box', resize: 'vertical' },
-  fileInput: { width: '100%', color: '#c9a96e', marginBottom: '12px' },
+  fileInputBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', width: '100%', backgroundColor: '#0a0a0a', border: '2px dashed #c9a96e', borderRadius: '12px', padding: '28px 16px', marginBottom: '16px', cursor: 'pointer', boxSizing: 'border-box' } as React.CSSProperties,
+  fileInputHidden: { display: 'none' },
+  fileInputIcon: { fontSize: '32px' },
+  fileInputText: { color: '#c9a96e', fontSize: '13px', letterSpacing: '1px', textAlign: 'center' as const },
+  fileInputNone: { color: '#c05050', fontSize: '11px', letterSpacing: '1px' },
   photoCount: { color: '#c9a96e', fontSize: '12px', marginBottom: '16px' },
   formBtns: { display: 'flex', gap: '10px', marginTop: '8px' },
   successBox: { backgroundColor: '#1a1506', border: '1px solid #c9a96e', borderRadius: '10px', padding: '14px', marginBottom: '20px' },
