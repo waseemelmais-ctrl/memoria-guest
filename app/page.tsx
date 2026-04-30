@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../firebase';
 
@@ -18,12 +18,12 @@ export default function GuestPage() {
   const [message, setMessage] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [condolences, setCondolences] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
   const [tributeName, setTributeName] = useState('');
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
   const [authReady, setAuthReady] = useState(false);
+  const [submittedCondolence, setSubmittedCondolence] = useState<any>(null);
 
   // Sign in anonymously so Firestore rules (request.auth != null) are satisfied
   useEffect(() => {
@@ -66,19 +66,7 @@ export default function GuestPage() {
       }
     };
 
-    const unsubCondolences = onSnapshot(
-      collection(db, 'condolences'),
-      (snapshot) => {
-        const list = snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter((c: any) => c.eventId === eventId)
-          .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setCondolences(list);
-      }
-    );
-
     loadTribute();
-    return () => { unsubCondolences(); };
   }, [eventId]);
 
   const uploadToCloudinary = async (file: File): Promise<string> => {
@@ -109,20 +97,8 @@ export default function GuestPage() {
           uploadedAt: new Date().toISOString(),
         });
       }
-      // Only write a condolence if the guest actually typed a message
-      if (message.trim()) {
-        await addDoc(collection(db, 'condolences'), {
-          eventId,
-          name: guestName.trim(),
-          message: message.trim(),
-          createdAt: new Date().toISOString(),
-          reactions: DEFAULT_REACTIONS,
-          reactedBy: {},
-        });
-      }
       setSuccess(`Thank you ${guestName}! Your photo${photos.length > 1 ? 's have' : ' has'} been added to the tribute.`);
       setPhotos([]);
-      setMessage('');
       setGuestName('');
       setScreen('home');
     } catch (err) {
@@ -138,14 +114,16 @@ export default function GuestPage() {
     setUploading(true);
     setError('');
     try {
-      await addDoc(collection(db, 'condolences'), {
+      const condolenceData = {
         eventId,
         name: guestName.trim(),
         message: message.trim(),
         createdAt: new Date().toISOString(),
-        reactions: DEFAULT_REACTIONS,  // ← required by the app's condolence wall
-        reactedBy: {},                 // ← required by the app's condolence wall
-      });
+        reactions: DEFAULT_REACTIONS,
+        reactedBy: {},
+      };
+      await addDoc(collection(db, 'condolences'), condolenceData);
+      setSubmittedCondolence(condolenceData);
       setSuccess('Your message has been shared.');
       setMessage('');
       setGuestName('');
@@ -263,14 +241,6 @@ export default function GuestPage() {
               value={guestName}
               onChange={e => setGuestName(e.target.value)}
             />
-            <label style={styles.inputLabel}>Leave a message (optional)</label>
-            <textarea
-              style={styles.textarea}
-              placeholder="Share a memory or kind words — this will also appear on the condolence wall..."
-              value={message}
-              onChange={e => setMessage(e.target.value)}
-              rows={3}
-            />
             <label style={styles.inputLabel}>Select Photos</label>
             <label style={styles.fileInputBox}>
               <input
@@ -329,21 +299,20 @@ export default function GuestPage() {
                 {uploading ? 'Sending...' : 'Share Message'}
               </button>
             </div>
-            <div style={styles.condolencesList}>
-              <h4 style={styles.condolencesTitle}>Messages of Comfort</h4>
-              {condolences.length === 0 && (
-                <p style={styles.emptyText}>No messages yet. Be the first to share.</p>
-              )}
-              {condolences.map((c: any) => (
-                <div key={c.id} style={styles.condolenceCard}>
-                  <p style={styles.condolenceName}>{c.name}</p>
-                  <p style={styles.condolenceMessage}>{c.message}</p>
+
+            {/* Show only the user's own last submitted message as a receipt */}
+            {submittedCondolence && (
+              <div style={styles.receiptBox}>
+                <p style={styles.receiptLabel}>Your Message of Comfort</p>
+                <div style={styles.condolenceCard}>
+                  <p style={styles.condolenceName}>{submittedCondolence.name}</p>
+                  <p style={styles.condolenceMessage}>{submittedCondolence.message}</p>
                   <p style={styles.condolenceDate}>
-                    {new Date(c.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    {new Date(submittedCondolence.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </p>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -403,8 +372,8 @@ const styles: { [key: string]: React.CSSProperties } = {
   successBox: { backgroundColor: '#1a1506', border: '1px solid #c9a96e', borderRadius: '10px', padding: '14px', marginBottom: '20px' },
   successText: { color: '#c9a96e', fontSize: '13px', margin: 0 },
   errorText: { color: '#c05050', fontSize: '13px', marginBottom: '12px' },
-  condolencesList: { marginTop: '32px' },
-  condolencesTitle: { color: '#555', fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '16px' },
+  receiptBox: { marginTop: '28px' },
+  receiptLabel: { color: '#555', fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase' as const, marginBottom: '12px' },
   condolenceCard: { backgroundColor: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: '12px', padding: '16px', marginBottom: '12px' },
   condolenceName: { color: '#c9a96e', fontSize: '13px', fontWeight: 600, marginBottom: '6px' },
   condolenceMessage: { color: '#ccc', fontSize: '14px', lineHeight: 1.6, marginBottom: '8px' },
