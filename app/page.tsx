@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../firebase';
 
@@ -49,21 +49,16 @@ export default function GuestPage() {
     if (!eventId) return;
 
     const loadTribute = async () => {
-      const snapshot = await getDocs(collection(db, 'users'));
-      for (const userDoc of snapshot.docs) {
-        const tributesSnap = await getDocs(collection(db, 'users', userDoc.id, 'tributes'));
-        for (const tributeDoc of tributesSnap.docs) {
-          if (tributeDoc.data().eventId === eventId) {
-            setTributeName(tributeDoc.data().lovedOneName);
-            const eventsSnap = await getDocs(
-              collection(db, 'users', userDoc.id, 'tributes', tributeDoc.id, 'events')
-            );
-            const eventsList = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            eventsList.sort((a: any, b: any) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
-            setEvents(eventsList);
-          }
-        }
-      }
+      const tributeSnap = await getDoc(doc(db, 'tributes', eventId));
+      if (!tributeSnap.exists()) return;
+      const tributeData = tributeSnap.data();
+      setTributeName(tributeData.lovedOneName);
+      const eventsSnap = await getDocs(
+        collection(db, 'users', tributeData.adminUserId, 'tributes', eventId, 'events')
+      );
+      const eventsList = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      eventsList.sort((a: any, b: any) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
+      setEvents(eventsList);
     };
 
     loadTribute();
