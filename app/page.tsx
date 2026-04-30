@@ -38,6 +38,13 @@ export default function GuestPage() {
     return () => unsub();
   }, []);
 
+  // Read eventId from URL on client side only
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('event') || '';
+    setEventId(id);
+  }, []);
+
   useEffect(() => {
     if (!eventId) return;
 
@@ -163,7 +170,7 @@ export default function GuestPage() {
         <div style={styles.card}>
           <div style={styles.icon}>✦</div>
           <h1 style={styles.title}>Memoria</h1>
-          <p style={styles.subtitle}>Loading...</p>
+          <p style={styles.subtitle}>No tribute code found. Please scan the QR code again.</p>
         </div>
       </div>
     );
