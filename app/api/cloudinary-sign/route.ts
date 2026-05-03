@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { verifyFirebaseToken } from '../../../lib/verifyToken';
 
 export async function GET(request: NextRequest) {
-  const valid = await verifyFirebaseToken(request.headers.get('Authorization'));
+  const { valid } = await verifyFirebaseToken(request.headers.get('Authorization'));
   if (!valid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const timestamp = Math.round(Date.now() / 1000);
