@@ -26,6 +26,7 @@ export default function GuestPage() {
   const [submittedCondolence, setSubmittedCondolence] = useState<any>(null);
   const [submittedCondolenceId, setSubmittedCondolenceId] = useState<string | null>(null);
   const [isEditingCondolence, setIsEditingCondolence] = useState(false);
+  const [showAppFallback, setShowAppFallback] = useState(false);
   const [editName, setEditName] = useState('');
   const [editMessage, setEditMessage] = useState('');
 
@@ -204,12 +205,28 @@ export default function GuestPage() {
               <button
                 style={styles.btnJoin}
                 onClick={() => {
+                  setShowAppFallback(false);
                   window.location.href = `memoria://join/${eventId}`;
-                  setTimeout(() => { setScreen('joincode'); }, 1500);
+                  setTimeout(() => setShowAppFallback(true), 2000);
                 }}
               >
                 Open in Memoria App
               </button>
+              {showAppFallback && (
+                <div style={styles.fallbackBox}>
+                  <p style={styles.fallbackText}>Don't have the app yet?</p>
+                  <p style={styles.fallbackSub}>It's coming soon to the App Store.</p>
+                  <a
+                    href="https://apps.apple.com/app/memoria/PLACEHOLDER"
+                    style={styles.fallbackLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View on App Store
+                  </a>
+                  <p style={styles.fallbackHint}>In the meantime, tap <strong style={{color:'#c9a96e'}}>View Join Code</strong> below to join manually.</p>
+                </div>
+              )}
               <button style={styles.btnCodeOnly} onClick={() => setScreen('joincode')}>
                 View Join Code
               </button>
@@ -434,6 +451,11 @@ const styles: { [key: string]: React.CSSProperties } = {
   condolenceMessage: { color: '#ccc', fontSize: '14px', lineHeight: 1.6, marginBottom: '8px' },
   condolenceDate: { color: '#444', fontSize: '11px' },
   editBtn: { marginTop: '12px', backgroundColor: 'transparent', color: '#c9a96e', border: '1px solid #c9a96e', borderRadius: '8px', padding: '8px 16px', fontSize: '11px', letterSpacing: '1px', cursor: 'pointer' },
+  fallbackBox: { backgroundColor: '#0f0f0f', border: '1px solid #2a2a1a', borderRadius: '10px', padding: '14px', marginTop: '12px', textAlign: 'center' as const },
+  fallbackText: { color: '#e8e0d0', fontSize: '13px', fontWeight: 600, marginBottom: '4px' },
+  fallbackSub: { color: '#888', fontSize: '12px', marginBottom: '10px' },
+  fallbackLink: { display: 'inline-block', color: '#c9a96e', border: '1px solid #c9a96e', borderRadius: '8px', padding: '7px 16px', fontSize: '11px', letterSpacing: '1px', textDecoration: 'none', marginBottom: '10px' },
+  fallbackHint: { color: '#555', fontSize: '11px', lineHeight: 1.5, margin: 0 },
   emptyText: { color: '#333', fontSize: '13px', textAlign: 'center', marginTop: '20px' },
   eventCard: { backgroundColor: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: '12px', padding: '16px', marginBottom: '12px' },
   eventName: { color: '#e8e0d0', fontSize: '17px', marginBottom: '6px' },
