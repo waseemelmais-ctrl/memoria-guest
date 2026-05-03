@@ -5,8 +5,6 @@ import { collection, addDoc, updateDoc, doc, getDoc, getDocs } from 'firebase/fi
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../firebase';
 
-const CLOUDINARY_CLOUD_NAME = 'djkxympk0';
-const CLOUDINARY_UPLOAD_PRESET = 'photo_slideshow';
 
 // Default reactions structure — must match what the app expects
 const DEFAULT_REACTIONS = { '❤️': 0, '🕊️': 0, '🙏': 0 };
@@ -70,11 +68,24 @@ export default function GuestPage() {
   }, [eventId]);
 
   const uploadToCloudinary = async (file: File): Promise<string> => {
+    const idToken = await getAuth().currentUser?.getIdToken();
+    if (!idToken) throw new Error('Not authenticated');
+
+    const signRes = await fetch('/api/cloudinary-sign', {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (!signRes.ok) throw new Error('Could not get upload signature');
+    const { signature, timestamp, apiKey, cloudName, uploadPreset } = await signRes.json();
+
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    formData.append('api_key', apiKey);
+    formData.append('timestamp', String(timestamp));
+    formData.append('signature', signature);
+    formData.append('upload_preset', uploadPreset);
+
     const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
       { method: 'POST', body: formData }
     );
     const data = await response.json();
