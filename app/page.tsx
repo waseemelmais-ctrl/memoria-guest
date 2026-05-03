@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../firebase';
 
@@ -24,6 +24,10 @@ export default function GuestPage() {
   const [error, setError] = useState('');
   const [authReady, setAuthReady] = useState(false);
   const [submittedCondolence, setSubmittedCondolence] = useState<any>(null);
+  const [submittedCondolenceId, setSubmittedCondolenceId] = useState<string | null>(null);
+  const [isEditingCondolence, setIsEditingCondolence] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editMessage, setEditMessage] = useState('');
 
   // Sign in anonymously so Firestore rules (request.auth != null) are satisfied
   useEffect(() => {
@@ -117,13 +121,36 @@ export default function GuestPage() {
         reactions: DEFAULT_REACTIONS,
         reactedBy: {},
       };
-      await addDoc(collection(db, 'condolences'), condolenceData);
+      const docRef = await addDoc(collection(db, 'condolences'), condolenceData);
       setSubmittedCondolence(condolenceData);
+      setSubmittedCondolenceId(docRef.id);
+      setIsEditingCondolence(false);
       setSuccess('Your message has been shared.');
       setMessage('');
       setGuestName('');
     } catch (err) {
       setError('Something went wrong. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleEditSave = async () => {
+    if (!editName.trim()) { setError('Please enter your name.'); return; }
+    if (!editMessage.trim()) { setError('Please enter a message.'); return; }
+    if (!submittedCondolenceId) return;
+    setUploading(true);
+    setError('');
+    try {
+      await updateDoc(doc(db, 'condolences', submittedCondolenceId), {
+        name: editName.trim(),
+        message: editMessage.trim(),
+      });
+      setSubmittedCondolence((prev: any) => ({ ...prev, name: editName.trim(), message: editMessage.trim() }));
+      setIsEditingCondolence(false);
+      setSuccess('Your message has been updated.');
+    } catch {
+      setError('Could not save changes. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -299,13 +326,46 @@ export default function GuestPage() {
             {submittedCondolence && (
               <div style={styles.receiptBox}>
                 <p style={styles.receiptLabel}>Your Message of Comfort</p>
-                <div style={styles.condolenceCard}>
-                  <p style={styles.condolenceName}>{submittedCondolence.name}</p>
-                  <p style={styles.condolenceMessage}>{submittedCondolence.message}</p>
-                  <p style={styles.condolenceDate}>
-                    {new Date(submittedCondolence.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
+                {isEditingCondolence ? (
+                  <div style={styles.condolenceCard}>
+                    {error && <p style={styles.errorText}>{error}</p>}
+                    <label style={styles.inputLabel}>Your Name</label>
+                    <input
+                      style={styles.input}
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                    />
+                    <label style={styles.inputLabel}>Your Message</label>
+                    <textarea
+                      style={styles.textarea}
+                      value={editMessage}
+                      onChange={e => setEditMessage(e.target.value)}
+                      rows={4}
+                    />
+                    <div style={styles.formBtns}>
+                      <button style={styles.btnSecondary} onClick={() => { setIsEditingCondolence(false); setError(''); }}>
+                        Cancel
+                      </button>
+                      <button style={styles.btnPrimary} onClick={handleEditSave} disabled={uploading}>
+                        {uploading ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={styles.condolenceCard}>
+                    <p style={styles.condolenceName}>{submittedCondolence.name}</p>
+                    <p style={styles.condolenceMessage}>{submittedCondolence.message}</p>
+                    <p style={styles.condolenceDate}>
+                      {new Date(submittedCondolence.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </p>
+                    <button
+                      style={styles.editBtn}
+                      onClick={() => { setEditName(submittedCondolence.name); setEditMessage(submittedCondolence.message); setIsEditingCondolence(true); setError(''); }}
+                    >
+                      Edit Message
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -373,6 +433,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   condolenceName: { color: '#c9a96e', fontSize: '13px', fontWeight: 600, marginBottom: '6px' },
   condolenceMessage: { color: '#ccc', fontSize: '14px', lineHeight: 1.6, marginBottom: '8px' },
   condolenceDate: { color: '#444', fontSize: '11px' },
+  editBtn: { marginTop: '12px', backgroundColor: 'transparent', color: '#c9a96e', border: '1px solid #c9a96e', borderRadius: '8px', padding: '8px 16px', fontSize: '11px', letterSpacing: '1px', cursor: 'pointer' },
   emptyText: { color: '#333', fontSize: '13px', textAlign: 'center', marginTop: '20px' },
   eventCard: { backgroundColor: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: '12px', padding: '16px', marginBottom: '12px' },
   eventName: { color: '#e8e0d0', fontSize: '17px', marginBottom: '6px' },
