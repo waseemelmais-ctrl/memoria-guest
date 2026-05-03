@@ -132,6 +132,7 @@ export default function GuestPage() {
         createdAt: new Date().toISOString(),
         reactions: DEFAULT_REACTIONS,
         reactedBy: {},
+        submittedBy: getAuth().currentUser?.uid ?? null,
       };
       const docRef = await addDoc(collection(db, 'condolences'), condolenceData);
       setSubmittedCondolence(condolenceData);
