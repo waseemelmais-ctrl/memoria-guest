@@ -182,7 +182,7 @@ export default function GuestPage() {
       <div style={styles.container}>
         <div style={styles.card}>
           <div style={styles.icon}>✦</div>
-          <h1 style={styles.title}>Memoria</h1>
+          <h1 style={styles.title}>Memoriam</h1>
           <p style={styles.subtitle}>No tribute code found. Please scan the QR code again.</p>
         </div>
       </div>
@@ -193,7 +193,7 @@ export default function GuestPage() {
     <div style={styles.container}>
       <div style={styles.card}>
         <div style={styles.icon}>✦</div>
-        <h1 style={styles.title}>Memoria</h1>
+        <h1 style={styles.title}>Memoriam</h1>
 
         {tributeName && (
           <>
@@ -212,24 +212,24 @@ export default function GuestPage() {
         {screen === 'home' && (
           <div style={styles.homeButtons}>
             <div style={styles.joinBanner}>
-              <p style={styles.joinTitle}>Have the Memoria App?</p>
+              <p style={styles.joinTitle}>Have the Memoriam App?</p>
               <p style={styles.joinSubtitle}>Join this tribute directly in the app for the full experience</p>
               <button
                 style={styles.btnJoin}
                 onClick={() => {
                   setShowAppFallback(false);
-                  window.location.href = `memoria://join/${eventId}`;
+                  window.location.href = `memoriam://join/${eventId}`;
                   setTimeout(() => setShowAppFallback(true), 2000);
                 }}
               >
-                Open in Memoria App
+                Open in Memoriam App
               </button>
               {showAppFallback && (
                 <div style={styles.fallbackBox}>
                   <p style={styles.fallbackText}>Don't have the app yet?</p>
                   <p style={styles.fallbackSub}>It's coming soon to the App Store.</p>
                   <a
-                    href="https://apps.apple.com/app/memoria/PLACEHOLDER"
+                    href="https://apps.apple.com/app/memoriam/PLACEHOLDER"
                     style={styles.fallbackLink}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -262,7 +262,7 @@ export default function GuestPage() {
             <h3 style={styles.formTitle}>Join in the App</h3>
             <p style={styles.joinInstructions}>
               {'1. Download '}
-              <strong style={{color: '#c9a96e'}}>Memoria</strong>
+              <strong style={{color: '#c9a96e'}}>Memoriam</strong>
               {' from the App Store\n2. Sign up or sign in\n3. Tap "Join a Tribute" and enter this code:'}
             </p>
             <div style={styles.joinCodeBox}>
