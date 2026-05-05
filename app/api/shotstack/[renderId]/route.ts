@@ -6,9 +6,18 @@ export async function GET(request: NextRequest, ctx: RouteContext<'/api/shotstac
   if (!valid) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { renderId } = await ctx.params;
+  const isTest = request.nextUrl.searchParams.get('isTest') === 'true';
 
-  const response = await fetch(`https://api.shotstack.io/stage/render/${renderId}`, {
-    headers: { 'x-api-key': process.env.SHOTSTACK_API_KEY! },
+  const endpoint = isTest
+    ? `https://api.shotstack.io/stage/render/${renderId}`
+    : `https://api.shotstack.io/v1/render/${renderId}`;
+
+  const apiKey = isTest
+    ? process.env.SHOTSTACK_TEST_API_KEY!
+    : process.env.SHOTSTACK_PRODUCTION_API_KEY!;
+
+  const response = await fetch(endpoint, {
+    headers: { 'x-api-key': apiKey },
   });
 
   const data = await response.json();
