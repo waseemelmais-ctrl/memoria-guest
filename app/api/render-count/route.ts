@@ -2,7 +2,7 @@ import type { NextRequest } from 'next/server';
 import { verifyFirebaseToken } from '../../../lib/verifyToken';
 import { getIntField } from '../../../lib/firestoreRest';
 
-const FREE_RENDER_LIMIT = 3;
+const FREE_RENDER_LIMIT = 1;
 const PRO_RENDER_LIMIT = 20;
 
 export async function GET(request: NextRequest) {
