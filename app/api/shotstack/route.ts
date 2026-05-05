@@ -14,16 +14,22 @@ export async function POST(request: NextRequest) {
   const { valid, uid, idToken } = await verifyFirebaseToken(request.headers.get('Authorization'));
   if (!valid || !uid || !idToken) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const isDev  = DEV_UIDS.includes(uid);
-  const body   = await request.json();
-  const isPro  = body.isPro === true;
-  const isTest = body.isTest === true;
-  const limit  = isPro ? PRO_RENDER_LIMIT : FREE_RENDER_LIMIT;
+  const isDev    = DEV_UIDS.includes(uid);
+  const body     = await request.json();
+  const isPro    = body.isPro === true;
+  const isTest   = body.isTest === true;
+  // Credits = ceil(duration / 60), capped at PRO_RENDER_LIMIT as a sanity check
+  const credits  = isTest ? 0 : Math.max(1, Math.min(PRO_RENDER_LIMIT, Number(body.credits) || 1));
+  const baseLimit = isPro ? PRO_RENDER_LIMIT : FREE_RENDER_LIMIT;
 
   // Only check and increment render count for final (non-test) renders
   if (!isTest && !isDev) {
-    const renderCount = await getIntField(idToken, RENDER_DOC(uid), 'count');
-    if (renderCount >= limit) {
+    const [renderCount, bonusCredits] = await Promise.all([
+      getIntField(idToken, RENDER_DOC(uid), 'count'),
+      getIntField(idToken, RENDER_DOC(uid), 'bonusCredits'),
+    ]);
+    const limit = baseLimit + bonusCredits;
+    if (renderCount + credits > limit) {
       return Response.json(
         { error: 'Render limit reached', count: renderCount, limit },
         { status: 429 }
@@ -50,7 +56,7 @@ export async function POST(request: NextRequest) {
 
   // Only increment count on successful final renders (never for dev accounts)
   if (!isTest && !isDev && response.ok && data.response?.id) {
-    await incrementIntField(idToken, RENDER_DOC(uid), 'count');
+    await incrementIntField(idToken, RENDER_DOC(uid), 'count', credits);
   }
 
   return Response.json(data, { status: response.status });

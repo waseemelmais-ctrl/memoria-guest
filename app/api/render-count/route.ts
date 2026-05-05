@@ -15,7 +15,12 @@ export async function GET(request: NextRequest) {
   }
 
   const isPro = request.nextUrl.searchParams.get('isPro') === 'true';
-  const limit = isPro ? PRO_RENDER_LIMIT : FREE_RENDER_LIMIT;
-  const count = await getIntField(idToken, `users/${uid}/stats/renders`, 'count');
+  const baseLimit = isPro ? PRO_RENDER_LIMIT : FREE_RENDER_LIMIT;
+  const docPath = `users/${uid}/stats/renders`;
+  const [count, bonusCredits] = await Promise.all([
+    getIntField(idToken, docPath, 'count'),
+    getIntField(idToken, docPath, 'bonusCredits'),
+  ]);
+  const limit = baseLimit + bonusCredits;
   return Response.json({ count, limit, remaining: limit - count });
 }
