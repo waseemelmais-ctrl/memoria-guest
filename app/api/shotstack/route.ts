@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
   const payload  = body.payload;
   const endpoint = isTest ? SHOTSTACK_STAGE : SHOTSTACK_PRODUCTION;
   const apiKey   = isTest
-    ? process.env.Shotstack_API_Key!
-    : process.env.Shotstack_Production_API_Key!;
+    ? process.env.SHOTSTACK_TEST_API_KEY!
+    : process.env.SHOTSTACK_PRODUCTION_API_KEY!;
 
   const response = await fetch(endpoint, {
     method: 'POST',
