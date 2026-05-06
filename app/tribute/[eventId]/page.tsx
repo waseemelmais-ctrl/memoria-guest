@@ -5,6 +5,13 @@ import { collection, getDocs, getDoc, doc, query, where } from 'firebase/firesto
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../../../firebase';
 
+interface PublicSettings {
+  showVideo: boolean;
+  showPhotos: boolean;
+  showWall: boolean;
+  showDate: boolean;
+}
+
 interface Tribute {
   lovedOneName: string;
   adminUserId: string;
@@ -13,6 +20,7 @@ interface Tribute {
   speciesLabel?: string;
   speciesIcon?: string;
   lastFinalRenderUrl?: string;
+  publicSettings?: PublicSettings;
 }
 
 interface Photo {
@@ -102,6 +110,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
 
   const isPet = tribute.tributeType === 'pet';
   const passingYear = tribute.dateOfPassing ? new Date(tribute.dateOfPassing).getFullYear() : null;
+  const ps = tribute.publicSettings ?? { showVideo: true, showPhotos: true, showWall: true, showDate: true };
   const previewPhotos = photos.slice(0, 4);
   const hasMore = photos.length > 4;
 
@@ -121,7 +130,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
           <h1 style={s.heroName}>
             {isPet && tribute.speciesIcon && `${tribute.speciesIcon} `}{tribute.lovedOneName}
           </h1>
-          {passingYear && (
+          {passingYear && ps.showDate && (
             <p style={s.heroSub}>
               {isPet && tribute.speciesLabel ? `${tribute.speciesLabel} · ` : ''}Passed {passingYear}
             </p>
@@ -130,7 +139,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
         </div>
 
         {/* ── Tribute Video ── */}
-        {tribute.lastFinalRenderUrl && (
+        {ps.showVideo && tribute.lastFinalRenderUrl && (
           <section style={s.section}>
             <p style={s.sectionLabel}>TRIBUTE VIDEO</p>
             <video
@@ -143,7 +152,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
         )}
 
         {/* ── Photo Gallery Teaser ── */}
-        {photos.length > 0 && (
+        {ps.showPhotos && photos.length > 0 && (
           <section style={s.section}>
             <p style={s.sectionLabel}>PHOTOS</p>
             <div style={s.photoGrid}>
@@ -171,7 +180,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
         )}
 
         {/* ── Condolence Wall (read-only) ── */}
-        {condolences.length > 0 && (
+        {ps.showWall && condolences.length > 0 && (
           <section style={s.section}>
             <p style={s.sectionLabel}>CONDOLENCE WALL</p>
             <div style={s.condolenceList}>
