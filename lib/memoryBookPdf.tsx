@@ -143,6 +143,7 @@ interface MemoryBookProps {
   deathYear: string | number;
   heroPhotoUrl: string | null;
   photoUrls: string[];
+  condolenceMessages?: { name: string; message: string }[];
 }
 
 // Chunk photos into pages of 4
@@ -160,6 +161,7 @@ export function MemoryBookDocument({
   deathYear,
   heroPhotoUrl,
   photoUrls,
+  condolenceMessages = [],
 }: MemoryBookProps) {
   const yearsLabel =
     birthYear && deathYear
@@ -170,9 +172,10 @@ export function MemoryBookDocument({
       ? `${deathYear}`
       : '';
 
-  // Exclude hero from interior pages if it's the same as first photo
+  // Exclude hero from interior pages
   const interiorPhotos = photoUrls.filter(u => u !== heroPhotoUrl);
   const photoPages = chunkPhotos(interiorPhotos, 4);
+  const hasWall = condolenceMessages.length > 0;
 
   return (
     <Document title={`Memory Book — ${name}`} author="Memoriam">
@@ -189,6 +192,21 @@ export function MemoryBookDocument({
         <View style={styles.coverDivider} />
         <Text style={styles.coverFooter}>Created with Memoriam</Text>
       </Page>
+
+      {/* ── Condolence Wall page ── */}
+      {hasWall && (
+        <Page size="LETTER" style={styles.photoPage}>
+          <Text style={styles.pageHeader}>Messages of Love</Text>
+          <View style={{ gap: 14 }}>
+            {condolenceMessages.map((msg, i) => (
+              <View key={i} style={{ borderBottomWidth: i < condolenceMessages.length - 1 ? 1 : 0, borderBottomColor: '#e8e4dc', paddingBottom: 12 }}>
+                <Text style={{ fontSize: 11, color: '#c9a96e', fontWeight: 'bold', marginBottom: 4 }}>{msg.name}</Text>
+                <Text style={{ fontSize: 10, color: '#555', lineHeight: 1.6 }}>{msg.message}</Text>
+              </View>
+            ))}
+          </View>
+        </Page>
+      )}
 
       {/* ── Photo pages ── */}
       {photoPages.map((chunk, pageIndex) => (

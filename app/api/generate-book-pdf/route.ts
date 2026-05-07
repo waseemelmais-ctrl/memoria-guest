@@ -44,26 +44,42 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Tribute not found' }, { status: 404 });
     }
 
-    // Fetch photos (up to 40)
-    const photosSnap = await db
-      .collection('tributes')
-      .doc(eventId)
-      .collection('photos')
-      .orderBy('createdAt', 'asc')
-      .limit(40)
+    // Check for user-configured book draft (from BookBuilderScreen)
+    const draftSnap = await db
+      .collection('tributes').doc(eventId)
+      .collection('bookDraft').doc('current')
       .get();
+    const draft = draftSnap.exists ? draftSnap.data() : null;
 
-    const photoUrls: string[] = photosSnap.docs
-      .map(d => d.data().url as string)
-      .filter(Boolean);
+    let photoUrls: string[];
+    let heroPhotoUrl: string | null;
+    let condolenceMessages: { name: string; message: string }[] = [];
+
+    if (draft) {
+      // Use user's curated selection
+      photoUrls = draft.photoUrls ?? [];
+      heroPhotoUrl = draft.coverPhotoUrl ?? photoUrls[0] ?? null;
+      condolenceMessages = draft.condolenceMessages ?? [];
+    } else {
+      // Fallback: use all gallery photos
+      const photosSnap = await db
+        .collection('tributes').doc(eventId)
+        .collection('photos')
+        .orderBy('createdAt', 'asc')
+        .limit(40)
+        .get();
+      photoUrls = photosSnap.docs.map(d => d.data().url as string).filter(Boolean);
+      heroPhotoUrl = tribute.heroPhotoUrl || photoUrls[0] || null;
+    }
 
     // Build PDF
     const pdfData = {
-      name: tributeName || tribute.deceasedName || 'In Loving Memory',
+      name: tributeName || draft?.tributeName || tribute.deceasedName || 'In Loving Memory',
       birthYear: tribute.birthYear ?? '',
       deathYear: tribute.deathYear ?? '',
-      heroPhotoUrl: tribute.heroPhotoUrl || photoUrls[0] || null,
+      heroPhotoUrl,
       photoUrls,
+      condolenceMessages,
     };
 
     const pdfBuffer = await renderToBuffer(
