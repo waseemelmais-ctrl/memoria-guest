@@ -5,6 +5,26 @@ import admin from 'firebase-admin';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
+async function grantRevenueCatPro(appUserId: string): Promise<boolean> {
+  const res = await fetch(
+    `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}/entitlements/Pro/promotional`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.REVENUECAT_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ duration: 'lifetime' }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    console.error('RevenueCat Pro grant failed:', res.status, text);
+    return false;
+  }
+  return true;
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text();
   const sig = request.headers.get('stripe-signature');
@@ -32,11 +52,13 @@ export async function POST(request: NextRequest) {
       const db = getAdminDb();
       const donationRef = db.collection('donations').doc(intent.id);
 
+      // Idempotency — only record once
       const existing = await donationRef.get();
       if (existing.exists) {
         return Response.json({ ok: true, alreadyRecorded: true });
       }
 
+      // Record donation + increment tribute totals
       const batch = db.batch();
 
       batch.set(donationRef, {
@@ -57,9 +79,41 @@ export async function POST(request: NextRequest) {
 
       await batch.commit();
       console.log(`Donation recorded: ${intent.id} for tribute ${eventId}`);
+
+      // ── Auto-grant Pro if conditions met ──────────────────────────────────
+      const tributeSnap = await tributeRef.get();
+      const tributeData = tributeSnap.data();
+
+      if (
+        tributeData?.proFromDonations === true &&
+        tributeData?.proGranted !== true &&
+        (tributeData?.totalRaisedCents ?? 0) + intent.amount >= 1500
+      ) {
+        const adminUid = tributeData.adminUserId;
+        if (adminUid) {
+          // Get payout details from private user doc to find the admin uid
+          const userTributeRef = db
+            .collection('users')
+            .doc(adminUid)
+            .collection('tributes')
+            .doc(eventId);
+
+          const granted = await grantRevenueCatPro(adminUid);
+
+          if (granted) {
+            // Mark as granted on both docs to prevent double-granting
+            await Promise.all([
+              tributeRef.update({ proGranted: true }),
+              userTributeRef.update({ proGranted: true }),
+            ]);
+            console.log(`Pro granted to ${adminUid} for tribute ${eventId}`);
+          }
+        }
+      }
+
     } catch (err: any) {
-      console.error('Webhook Firestore write failed:', err?.message ?? err);
-      return Response.json({ error: 'Firestore write failed' }, { status: 500 });
+      console.error('Webhook error:', err?.message ?? err);
+      return Response.json({ error: 'Webhook processing failed' }, { status: 500 });
     }
   }
 
