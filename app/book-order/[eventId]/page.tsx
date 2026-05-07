@@ -348,12 +348,13 @@ function SuccessCard({ email, type }: { email: string; type: OrderType }) {
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
-export default function BookOrderPage({ params }: { params: { eventId: string } }) {
+export default function BookOrderPage({ params, searchParams }: { params: { eventId: string }; searchParams: { type?: string } }) {
   const { eventId } = params;
   const [tributeName, setTributeName] = useState('');
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [orderType, setOrderType] = useState<OrderType | null>(null);
+  const initialType = searchParams.type === 'pdf' ? 'pdf' : searchParams.type === 'print' ? 'print' : null;
+  const [orderType, setOrderType] = useState<OrderType | null>(initialType);
 
   useEffect(() => {
     async function load() {
