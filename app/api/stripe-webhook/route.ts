@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       if (
         tributeData?.proFromDonations === true &&
         tributeData?.proGranted !== true &&
-        (tributeData?.totalRaisedCents ?? 0) + intent.amount >= 1500
+        (tributeData?.totalRaisedCents ?? 0) + intent.amount >= 1499
       ) {
         const adminUid = tributeData.adminUserId;
         if (adminUid) {
