@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
       heroPhotoUrl,
       photoUrls,
       condolenceMessages,
+      photosPerPage: (draft?.photosPerPage ?? 4) as 1 | 2 | 4,
     };
 
     const pdfBuffer = await renderToBuffer(

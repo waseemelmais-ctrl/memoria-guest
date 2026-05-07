@@ -144,6 +144,7 @@ interface MemoryBookProps {
   heroPhotoUrl: string | null;
   photoUrls: string[];
   condolenceMessages?: { name: string; message: string }[];
+  photosPerPage?: 1 | 2 | 4;
 }
 
 // Chunk photos into pages of 4
@@ -162,6 +163,7 @@ export function MemoryBookDocument({
   heroPhotoUrl,
   photoUrls,
   condolenceMessages = [],
+  photosPerPage = 4,
 }: MemoryBookProps) {
   const yearsLabel =
     birthYear && deathYear
@@ -174,8 +176,11 @@ export function MemoryBookDocument({
 
   // Exclude hero from interior pages
   const interiorPhotos = photoUrls.filter(u => u !== heroPhotoUrl);
-  const photoPages = chunkPhotos(interiorPhotos, 4);
+  const chunkSize = photosPerPage as number;
+  const photoPages = chunkPhotos(interiorPhotos, chunkSize);
   const hasWall = condolenceMessages.length > 0;
+  // Layout: 1=single full-width, 2=side-by-side, 4=2x2 grid
+  const photoWidth = photosPerPage === 1 ? '90%' : '47%';
 
   return (
     <Document title={`Memory Book — ${name}`} author="Memoriam">
@@ -214,7 +219,7 @@ export function MemoryBookDocument({
           <Text style={styles.pageHeader}>{name} · Memories</Text>
           <View style={styles.photoGrid}>
             {chunk.map((url, i) => (
-              <View key={i} style={styles.photoCell}>
+              <View key={i} style={[styles.photoCell, { width: photoWidth }]}>
                 <Image src={url} style={styles.photo} />
               </View>
             ))}
