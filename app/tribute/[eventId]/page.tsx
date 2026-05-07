@@ -4,6 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, getDoc, doc, query, where } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../../../firebase';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
 
 interface PublicSettings {
   showVideo: boolean;
@@ -21,6 +25,9 @@ interface Tribute {
   speciesIcon?: string;
   lastFinalRenderUrl?: string;
   publicSettings?: PublicSettings;
+  donationFundEnabled?: boolean;
+  totalRaisedCents?: number;
+  donationCount?: number;
 }
 
 interface Photo {
@@ -34,6 +41,192 @@ interface Condolence {
   message: string;
   createdAt: string;
   reactions?: Record<string, number>;
+}
+
+const AMOUNTS = [1000, 2500, 5000, 10000]; // cents: $10, $25, $50, $100
+
+function DonationFormInner({ eventId, lovedOneName }: { eventId: string; lovedOneName: string }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [selectedCents, setSelectedCents] = useState<number>(2500);
+  const [customAmount, setCustomAmount] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+  const [donorName, setDonorName] = useState('');
+  const [message, setMessage] = useState('');
+  const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
+  const [clientSecret, setClientSecret] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const effectiveCents = showCustom
+    ? Math.round(parseFloat(customAmount || '0') * 100)
+    : selectedCents;
+
+  const handleContinue = async () => {
+    const cents = effectiveCents;
+    if (cents < 500) { setError('Minimum donation is $5'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/create-donation-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId, amountCents: cents, donorName, message }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? 'Something went wrong'); return; }
+      setClientSecret(data.clientSecret);
+      setStep('pay');
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePay = async () => {
+    if (!stripe || !elements) return;
+    setLoading(true);
+    setError('');
+    const card = elements.getElement(CardElement);
+    if (!card) return;
+    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      payment_method: { card },
+    });
+    if (stripeError) {
+      setError(stripeError.message ?? 'Payment failed');
+      setLoading(false);
+      return;
+    }
+    if (paymentIntent?.status === 'succeeded') {
+      // Record the donation server-side
+      try {
+        await fetch('/api/record-donation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paymentIntentId: paymentIntent.id,
+            eventId,
+            donorName,
+            message,
+            amountCents: effectiveCents,
+          }),
+        });
+      } catch { /* webhook will catch it as backup */ }
+      setStep('success');
+    }
+    setLoading(false);
+  };
+
+  if (step === 'success') {
+    return (
+      <div style={sd.successBox}>
+        <div style={sd.successStar}>✦</div>
+        <p style={sd.successTitle}>Thank you{donorName ? `, ${donorName}` : ''}</p>
+        <p style={sd.successSub}>
+          Your donation of ${(effectiveCents / 100).toFixed(2)} has been received.
+          {lovedOneName ? ` In honour of ${lovedOneName}.` : ''}
+        </p>
+      </div>
+    );
+  }
+
+  if (step === 'pay') {
+    return (
+      <div style={sd.payBox}>
+        <p style={sd.payAmount}>${(effectiveCents / 100).toFixed(2)} CAD</p>
+        <div style={sd.cardWrap}>
+          <CardElement options={{ style: { base: { color: '#e8e0d0', fontSize: '16px', '::placeholder': { color: '#444' } } } }} />
+        </div>
+        {error && <p style={sd.error}>{error}</p>}
+        <button style={sd.payBtn} onClick={handlePay} disabled={loading || !stripe}>
+          {loading ? 'Processing...' : `Donate $${(effectiveCents / 100).toFixed(2)}`}
+        </button>
+        <button style={sd.backBtn} onClick={() => setStep('select')} disabled={loading}>← Back</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={sd.amountRow}>
+        {AMOUNTS.map(c => (
+          <button
+            key={c}
+            style={{ ...sd.amountBtn, ...(selectedCents === c && !showCustom ? sd.amountBtnActive : {}) }}
+            onClick={() => { setSelectedCents(c); setShowCustom(false); setError(''); }}
+          >
+            ${c / 100}
+          </button>
+        ))}
+        <button
+          style={{ ...sd.amountBtn, ...(showCustom ? sd.amountBtnActive : {}) }}
+          onClick={() => setShowCustom(true)}
+        >
+          Other
+        </button>
+      </div>
+      {showCustom && (
+        <div style={sd.customRow}>
+          <span style={sd.customDollar}>$</span>
+          <input
+            type="number"
+            placeholder="Enter amount"
+            value={customAmount}
+            onChange={e => setCustomAmount(e.target.value)}
+            style={sd.customInput}
+            min="5"
+          />
+        </div>
+      )}
+      <input
+        placeholder="Your name (optional)"
+        value={donorName}
+        onChange={e => setDonorName(e.target.value)}
+        style={sd.field}
+      />
+      <textarea
+        placeholder="Leave a message (optional)"
+        value={message}
+        onChange={e => setMessage(e.target.value)}
+        style={{ ...sd.field, ...sd.textarea }}
+        rows={3}
+      />
+      {error && <p style={sd.error}>{error}</p>}
+      <button style={sd.payBtn} onClick={handleContinue} disabled={loading || effectiveCents < 500}>
+        {loading ? 'Please wait...' : 'Continue to Payment'}
+      </button>
+    </div>
+  );
+}
+
+function DonationSection({ eventId, lovedOneName, totalRaisedCents, donationCount }: {
+  eventId: string;
+  lovedOneName: string;
+  totalRaisedCents?: number;
+  donationCount?: number;
+}) {
+  const [clientSecret, setClientSecret] = useState('');
+  // We load elements lazily after getting clientSecret
+  const opts = clientSecret ? { clientSecret } : undefined;
+
+  return (
+    <section style={s.section}>
+      <p style={s.sectionLabel}>DONATION FUND</p>
+      {(totalRaisedCents ?? 0) > 0 && (
+        <div style={sd.raisedBar}>
+          <span style={sd.raisedAmount}>${((totalRaisedCents ?? 0) / 100).toFixed(2)}</span>
+          <span style={sd.raisedLabel}> raised from {donationCount ?? 0} donation{donationCount !== 1 ? 's' : ''}</span>
+        </div>
+      )}
+      <p style={sd.subtext}>
+        Support the family of {lovedOneName}. 90% of every donation goes directly to them.
+      </p>
+      <Elements stripe={stripePromise}>
+        <DonationFormInner eventId={eventId} lovedOneName={lovedOneName} />
+      </Elements>
+    </section>
+  );
 }
 
 export default function TributePage({ params }: { params: Promise<{ eventId: string }> }) {
@@ -208,6 +401,16 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
           </section>
         )}
 
+        {/* ── Donation Fund ── */}
+        {tribute.donationFundEnabled && (
+          <DonationSection
+            eventId={eventId}
+            lovedOneName={tribute.lovedOneName}
+            totalRaisedCents={tribute.totalRaisedCents}
+            donationCount={tribute.donationCount}
+          />
+        )}
+
         {/* ── App Download CTA ── */}
         <section style={s.ctaSection}>
           <div style={s.ctaCard}>
@@ -302,4 +505,30 @@ const s: { [key: string]: React.CSSProperties } = {
   appName: { color: '#c9a96e', fontSize: '22px', letterSpacing: '6px', fontWeight: 300, textTransform: 'uppercase' as const },
   mutedText: { color: '#444', fontSize: '14px', lineHeight: 1.7, fontFamily: 'sans-serif' },
   loadingText: { color: '#333', fontSize: '12px', letterSpacing: '2px', fontFamily: 'sans-serif' },
+};
+
+// Donation-specific styles
+const sd: { [key: string]: React.CSSProperties } = {
+  raisedBar: { marginBottom: '16px', display: 'flex', alignItems: 'baseline', gap: '4px' },
+  raisedAmount: { color: '#c9a96e', fontSize: '28px', fontFamily: 'Georgia, serif', fontWeight: 300 },
+  raisedLabel: { color: '#555', fontSize: '12px', fontFamily: 'sans-serif' },
+  subtext: { color: '#555', fontSize: '13px', lineHeight: 1.7, fontFamily: 'sans-serif', marginBottom: '20px' },
+  amountRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' as const, marginBottom: '16px' },
+  amountBtn: { flex: '1 1 auto', minWidth: '60px', padding: '12px 8px', backgroundColor: '#111', border: '1px solid #1e1e1e', borderRadius: '10px', color: '#888', fontSize: '14px', fontFamily: 'sans-serif', cursor: 'pointer' },
+  amountBtnActive: { backgroundColor: '#1a1506', border: '1px solid #c9a96e', color: '#c9a96e' },
+  customRow: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', backgroundColor: '#111', border: '1px solid #222', borderRadius: '10px', padding: '4px 14px' },
+  customDollar: { color: '#c9a96e', fontSize: '16px', fontFamily: 'sans-serif' },
+  customInput: { flex: 1, backgroundColor: 'transparent', border: 'none', outline: 'none', color: '#e8e0d0', fontSize: '16px', fontFamily: 'sans-serif', padding: '10px 0' },
+  field: { width: '100%', boxSizing: 'border-box' as const, backgroundColor: '#111', border: '1px solid #1e1e1e', borderRadius: '10px', padding: '14px', color: '#e8e0d0', fontSize: '14px', fontFamily: 'sans-serif', marginBottom: '12px', outline: 'none' },
+  textarea: { resize: 'none' as const },
+  payBtn: { width: '100%', backgroundColor: '#c9a96e', color: '#0a0a0a', border: 'none', borderRadius: '12px', padding: '16px', fontSize: '12px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase' as const, cursor: 'pointer', fontFamily: 'sans-serif', marginTop: '4px' },
+  backBtn: { background: 'none', border: 'none', color: '#444', fontSize: '12px', cursor: 'pointer', fontFamily: 'sans-serif', marginTop: '12px', letterSpacing: '1px' },
+  cardWrap: { backgroundColor: '#111', border: '1px solid #1e1e1e', borderRadius: '10px', padding: '16px', marginBottom: '16px' },
+  payBox: { display: 'flex', flexDirection: 'column' as const },
+  payAmount: { color: '#e8e0d0', fontSize: '24px', fontFamily: 'Georgia, serif', fontWeight: 300, marginBottom: '16px', textAlign: 'center' as const },
+  error: { color: '#e05c5c', fontSize: '12px', fontFamily: 'sans-serif', marginBottom: '12px' },
+  successBox: { textAlign: 'center' as const, padding: '32px 0' },
+  successStar: { color: '#c9a96e', fontSize: '32px', marginBottom: '16px' },
+  successTitle: { color: '#e8e0d0', fontSize: '22px', fontFamily: 'Georgia, serif', fontWeight: 300, marginBottom: '8px' },
+  successSub: { color: '#555', fontSize: '13px', fontFamily: 'sans-serif', lineHeight: 1.7 },
 };
