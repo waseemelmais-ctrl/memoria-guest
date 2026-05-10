@@ -212,7 +212,7 @@ function DonationSection({ eventId, lovedOneName, totalRaisedCents, donationCoun
 
   return (
     <section style={s.section}>
-      <p style={s.sectionLabel}>DONATION FUND</p>
+      <p style={s.sectionLabel}>TRIBUTE FUNDRAISER</p>
       {(totalRaisedCents ?? 0) > 0 && (
         <div style={sd.raisedBar}>
           <span style={sd.raisedAmount}>${((totalRaisedCents ?? 0) / 100).toFixed(2)}</span>

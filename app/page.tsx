@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, updateDoc, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDoc, getDocs } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../firebase';
 
@@ -27,6 +27,16 @@ export default function GuestPage() {
   const [showAppFallback, setShowAppFallback] = useState(false);
   const [editName, setEditName] = useState('');
   const [editMessage, setEditMessage] = useState('');
+  const [sessionToken] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const key = 'memoriam_session_token';
+    const existing = localStorage.getItem(key);
+    if (existing) return existing;
+    const token = crypto.randomUUID();
+    localStorage.setItem(key, token);
+    return token;
+  });
+  const [sessionPhotos, setSessionPhotos] = useState<{ id: string; url: string }[]>([]);
 
   // Sign in anonymously so Firestore rules (request.auth != null) are satisfied
   useEffect(() => {
@@ -99,23 +109,43 @@ export default function GuestPage() {
     setUploading(true);
     setError('');
     try {
+      const newPhotos: { id: string; url: string }[] = [];
       for (const photo of photos) {
         const url = await uploadToCloudinary(photo);
-        await addDoc(collection(db, 'photos'), {
+        const docRef = await addDoc(collection(db, 'photos'), {
           url,
           eventId,
           uploadedBy: guestName.trim(),
           uploadedAt: new Date().toISOString(),
+          sessionToken,
+          uploadedByUid: getAuth().currentUser?.uid ?? null,
         });
+        newPhotos.push({ id: docRef.id, url });
       }
+      setSessionPhotos(prev => [...prev, ...newPhotos]);
       setSuccess(`Thank you ${guestName}! Your photo${photos.length > 1 ? 's have' : ' has'} been added to the tribute.`);
       setPhotos([]);
-      setGuestName('');
-      setScreen('home');
     } catch (err) {
       setError('Something went wrong. Please try again.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleDeleteOwnPhoto = async (photoId: string, url: string) => {
+    try {
+      await deleteDoc(doc(db, 'photos', photoId));
+      setSessionPhotos(prev => prev.filter(p => p.id !== photoId));
+      const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+      if (match?.[1]) {
+        fetch('/api/delete-asset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ publicId: match[1] }),
+        }).catch(() => {});
+      }
+    } catch {
+      // silently ignore
     }
   };
 
@@ -317,6 +347,29 @@ export default function GuestPage() {
                 {uploading ? 'Uploading...' : 'Upload Photos'}
               </button>
             </div>
+
+            {/* Photos uploaded this session — with self-delete */}
+            {sessionPhotos.length > 0 && (
+              <div style={styles.sessionPhotosSection}>
+                <p style={styles.sessionPhotosLabel}>
+                  Your uploads this session — tap ✕ to remove
+                </p>
+                <div style={styles.sessionPhotosGrid}>
+                  {sessionPhotos.map(photo => (
+                    <div key={photo.id} style={styles.sessionPhotoWrap}>
+                      <img src={photo.url} style={styles.sessionPhotoImg} alt="" />
+                      <button
+                        style={styles.sessionPhotoDelete}
+                        onClick={() => handleDeleteOwnPhoto(photo.id, photo.url)}
+                        title="Remove this photo"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -456,6 +509,12 @@ const styles: { [key: string]: React.CSSProperties } = {
   successBox: { backgroundColor: '#1a1506', border: '1px solid #c9a96e', borderRadius: '10px', padding: '14px', marginBottom: '20px' },
   successText: { color: '#c9a96e', fontSize: '13px', margin: 0 },
   errorText: { color: '#c05050', fontSize: '13px', marginBottom: '12px' },
+  sessionPhotosSection: { marginTop: '28px', borderTop: '1px solid #1e1e1e', paddingTop: '20px' },
+  sessionPhotosLabel: { color: '#555', fontSize: '10px', letterSpacing: '2px', textTransform: 'uppercase' as const, marginBottom: '14px' },
+  sessionPhotosGrid: { display: 'flex', flexWrap: 'wrap' as const, gap: '10px' },
+  sessionPhotoWrap: { position: 'relative' as const, width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden' },
+  sessionPhotoImg: { width: '100%', height: '100%', objectFit: 'cover' as const, display: 'block' },
+  sessionPhotoDelete: { position: 'absolute' as const, top: '4px', right: '4px', width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'rgba(0,0,0,0.72)', border: 'none', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 },
   receiptBox: { marginTop: '28px' },
   receiptLabel: { color: '#555', fontSize: '10px', letterSpacing: '3px', textTransform: 'uppercase' as const, marginBottom: '12px' },
   condolenceCard: { backgroundColor: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: '12px', padding: '16px', marginBottom: '12px' },

@@ -4,7 +4,7 @@ import { getAdminDb } from '../../../lib/firebaseAdmin';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { Resend } from 'resend';
 import { createElement } from 'react';
-import { MemoryBookDocument } from '../../../lib/memoryBookPdf';
+import { MemoryBookDocument, type BookPage } from '../../../lib/memoryBookPdf';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const resend = new Resend(process.env.RESEND_API_KEY!);
@@ -51,17 +51,32 @@ export async function POST(request: NextRequest) {
       .get();
     const draft = draftSnap.exists ? draftSnap.data() : null;
 
-    let photoUrls: string[];
     let heroPhotoUrl: string | null;
-    let condolenceMessages: { name: string; message: string }[] = [];
+    let backCoverPhotoUrl: string | null = null;
+    let pages: BookPage[] | undefined;
+    let photoUrls: string[] = []; // fallback only
+    let theme = 'classic';
+    let themePhotoUrl: string | null = null;
 
     if (draft) {
-      // Use user's curated selection
-      photoUrls = draft.photoUrls ?? [];
-      heroPhotoUrl = draft.coverPhotoUrl ?? photoUrls[0] ?? null;
-      condolenceMessages = draft.condolenceMessages ?? [];
+      heroPhotoUrl = draft.coverPhotoUrl ?? null;
+      backCoverPhotoUrl = draft.backCoverPhotoUrl ?? null;
+      theme = draft.theme ?? 'classic';
+      themePhotoUrl = draft.themePhotoUrl ?? null;
+
+      // Prefer the per-page structure saved by BookBuilderScreen
+      if (Array.isArray(draft.pages) && draft.pages.length > 0) {
+        pages = draft.pages as BookPage[];
+        // Derive flat photoUrls for heroPhotoUrl fallback
+        const allPagePhotos = pages.flatMap(p => p.photoUrls ?? []);
+        if (!heroPhotoUrl) heroPhotoUrl = allPagePhotos[0] ?? null;
+      } else {
+        // Older draft format: flat photoUrls
+        photoUrls = draft.photoUrls ?? [];
+        if (!heroPhotoUrl) heroPhotoUrl = photoUrls[0] ?? null;
+      }
     } else {
-      // Fallback: use all gallery photos
+      // No draft — fall back to all gallery photos, 4-per-page
       const photosSnap = await db
         .collection('tributes').doc(eventId)
         .collection('photos')
@@ -78,9 +93,11 @@ export async function POST(request: NextRequest) {
       birthYear: tribute.birthYear ?? '',
       deathYear: tribute.deathYear ?? '',
       heroPhotoUrl,
-      photoUrls,
-      condolenceMessages,
-      photosPerPage: (draft?.photosPerPage ?? 4) as 1 | 2 | 4,
+      backCoverPhotoUrl,
+      theme,
+      themePhotoUrl,
+      pages,       // per-page layout (preferred)
+      photoUrls,   // flat fallback
     };
 
     const pdfBuffer = await renderToBuffer(

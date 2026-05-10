@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { getAdminDb } from '../../../lib/firebaseAdmin';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { createElement } from 'react';
-import { MemoryBookDocument } from '../../../lib/memoryBookPdf';
+import { MemoryBookDocument, type BookPage } from '../../../lib/memoryBookPdf';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -65,26 +65,54 @@ export async function POST(request: NextRequest) {
       return Response.json({ ok: true, alreadyProcessed: true });
     }
 
-    // Fetch tribute + photos
+    // Fetch tribute data
     const tributeSnap = await db.collection('tributes').doc(eventId).get();
     const tribute = tributeSnap.data();
     if (!tribute) {
       return Response.json({ error: 'Tribute not found' }, { status: 404 });
     }
 
-    const photosSnap = await db
-      .collection('tributes')
-      .doc(eventId)
-      .collection('photos')
-      .orderBy('createdAt', 'asc')
-      .limit(40)
+    // Check for user-configured book draft
+    const draftSnap = await db
+      .collection('tributes').doc(eventId)
+      .collection('bookDraft').doc('current')
       .get();
+    const draft = draftSnap.exists ? draftSnap.data() : null;
 
-    const photoUrls: string[] = photosSnap.docs
-      .map(d => d.data().url as string)
-      .filter(Boolean);
+    let heroPhotoUrl: string | null;
+    let backCoverPhotoUrl: string | null = null;
+    let pages: BookPage[] | undefined;
+    let photoUrls: string[] = [];
+    let theme = 'classic';
+    let themePhotoUrl: string | null = null;
 
-    const name = tributeName || tribute.deceasedName || 'In Loving Memory';
+    if (draft) {
+      heroPhotoUrl = draft.coverPhotoUrl ?? null;
+      backCoverPhotoUrl = draft.backCoverPhotoUrl ?? null;
+      theme = draft.theme ?? 'classic';
+      themePhotoUrl = draft.themePhotoUrl ?? null;
+
+      if (Array.isArray(draft.pages) && draft.pages.length > 0) {
+        pages = draft.pages as BookPage[];
+        const allPagePhotos = pages.flatMap(p => p.photoUrls ?? []);
+        if (!heroPhotoUrl) heroPhotoUrl = allPagePhotos[0] ?? null;
+      } else {
+        photoUrls = draft.photoUrls ?? [];
+        if (!heroPhotoUrl) heroPhotoUrl = photoUrls[0] ?? null;
+      }
+    } else {
+      // Fallback: all gallery photos, 4-per-page
+      const photosSnap = await db
+        .collection('tributes').doc(eventId)
+        .collection('photos')
+        .orderBy('createdAt', 'asc')
+        .limit(40)
+        .get();
+      photoUrls = photosSnap.docs.map(d => d.data().url as string).filter(Boolean);
+      heroPhotoUrl = tribute.heroPhotoUrl || photoUrls[0] || null;
+    }
+
+    const name = tributeName || draft?.tributeName || tribute.deceasedName || 'In Loving Memory';
 
     // Generate PDF
     const pdfBuffer = await renderToBuffer(
@@ -92,15 +120,22 @@ export async function POST(request: NextRequest) {
         name,
         birthYear: tribute.birthYear ?? '',
         deathYear: tribute.deathYear ?? '',
-        heroPhotoUrl: tribute.heroPhotoUrl || photoUrls[0] || null,
+        heroPhotoUrl,
+        backCoverPhotoUrl,
+        theme,
+        themePhotoUrl,
+        pages,
         photoUrls,
       }) as any
     );
 
-    // Calculate page count (must be >= 28, even number)
-    const interiorPhotos = photoUrls.filter(u => u !== (tribute.heroPhotoUrl || photoUrls[0]));
-    const photoPages = Math.ceil(interiorPhotos.length / 4);
-    const totalPages = Math.max(28, Math.ceil((photoPages + 2) / 2) * 2); // cover + pages + back, min 28
+    // Calculate page count for Gelato (must be >= 30, even number)
+    // Cover + blank signature + (photo page + lined page) × N + back cover
+    const numPhotoPages = pages
+      ? pages.length
+      : Math.ceil(photoUrls.filter(u => u !== heroPhotoUrl).length / 4);
+    const rawTotal = 2 + numPhotoPages * 2 + 1; // cover + blank + (photo+lined pairs) + back
+    const totalPages = Math.max(30, Math.ceil(rawTotal / 2) * 2);
 
     // Upload PDF to Gelato
     const filename = `memory-book-${eventId}.pdf`;
