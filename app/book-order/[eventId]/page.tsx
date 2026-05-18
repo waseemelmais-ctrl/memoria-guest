@@ -475,7 +475,7 @@ export default function BookOrderPage({
 
   const handleSelectCoverType = (ct: CoverType) => {
     setCoverType(ct);
-    setPriceCents(pricingData ? pricingData[ct] : ct === 'hardcover' ? 5999 : 4399);
+    setPriceCents(pricingData ? (pricingData[ct] ?? (ct === 'hardcover' ? 5999 : 4399)) : ct === 'hardcover' ? 5999 : 4399);
     setOrderType('print');
   };
 
