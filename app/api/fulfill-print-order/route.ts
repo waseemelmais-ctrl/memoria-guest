@@ -33,7 +33,8 @@ const GELATO_PRODUCT_UIDS: Record<string, string> = {
 
 async function uploadPdfToGelato(pdfBuffer: Buffer, filename: string): Promise<string> {
   const formData = new FormData();
-  formData.append('file', new Blob([pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength)], { type: 'application/pdf' }), filename);
+  const arrayBuffer = pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength) as ArrayBuffer;
+  formData.append('file', new Blob([arrayBuffer], { type: 'application/pdf' }), filename);
 
   const uploadRes = await fetch('https://file.gelatoapis.com/v1/files', {
     method: 'POST',
