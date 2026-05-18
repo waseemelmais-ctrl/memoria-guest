@@ -38,7 +38,7 @@ async function uploadPdfToCloudinary(pdfBuffer: Buffer, filename: string): Promi
   const crypto = await import('crypto');
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = `memory-books/${filename.replace('.pdf', '')}`;
-  const toSign = `public_id=${publicId}&resource_type=raw&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
+  const toSign = `public_id=${publicId}&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
   const signature = crypto.createHash('sha256').update(toSign).digest('hex');
 
   const formData = new FormData();
