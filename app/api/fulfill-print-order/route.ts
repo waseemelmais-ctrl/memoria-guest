@@ -9,6 +9,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const GELATO_API_KEY = process.env.GELATO_API_KEY!;
 const GELATO_ORDERS_URL = 'https://order.gelatoapis.com/v4/orders';
+const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME!;
+const CLOUDINARY_API_KEY_VAR = process.env.CLOUDINARY_API_KEY!;
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET!;
 
 // Gelato naming convention: photobooks-{cover}_pf_{W}x{H}-mm-{w}x{h}-inch_{interior}_{cover-paper}_{ver|hor}
 // Confirmed from Gelato dashboard May 2026.
@@ -31,24 +34,34 @@ const GELATO_PRODUCT_UIDS: Record<string, string> = {
   'hardcover_11x11_portrait':  `photobooks-hardcover_pf_280x280-mm-11x11-inch_${HC_BASE}_ver`,
 };
 
-async function uploadPdfToGelato(pdfBuffer: Buffer, filename: string): Promise<string> {
+async function uploadPdfToCloudinary(pdfBuffer: Buffer, filename: string): Promise<string> {
+  const crypto = await import('crypto');
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = `memory-books/${filename.replace('.pdf', '')}`;
+  const toSign = `public_id=${publicId}&resource_type=raw&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
+  const signature = crypto.createHash('sha256').update(toSign).digest('hex');
+
   const formData = new FormData();
   const arrayBuffer = pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength) as ArrayBuffer;
   formData.append('file', new Blob([arrayBuffer], { type: 'application/pdf' }), filename);
+  formData.append('public_id', publicId);
+  formData.append('resource_type', 'raw');
+  formData.append('timestamp', String(timestamp));
+  formData.append('api_key', CLOUDINARY_API_KEY_VAR);
+  formData.append('signature', signature);
 
-  const uploadRes = await fetch('https://file.gelatoapis.com/v1/files', {
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`, {
     method: 'POST',
-    headers: { 'X-API-KEY': GELATO_API_KEY },
     body: formData,
   });
 
-  if (!uploadRes.ok) {
-    const text = await uploadRes.text();
-    throw new Error(`Gelato file upload failed: ${uploadRes.status} ${text}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Cloudinary upload failed: ${res.status} ${text}`);
   }
 
-  const data = await uploadRes.json();
-  return data.url as string;
+  const data = await res.json();
+  return data.secure_url as string;
 }
 
 export async function POST(request: NextRequest) {
@@ -160,7 +173,7 @@ export async function POST(request: NextRequest) {
 
     // Upload PDF to Gelato
     const filename = `memory-book-${eventId}.pdf`;
-    const fileUrl = await uploadPdfToGelato(pdfBuffer, filename);
+    const fileUrl = await uploadPdfToCloudinary(pdfBuffer, filename);
 
     // Place Gelato order
     const gelatoOrder = {

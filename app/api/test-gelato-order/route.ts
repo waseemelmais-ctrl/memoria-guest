@@ -5,6 +5,9 @@ import { createElement } from 'react';
 import { MemoryBookDocument, type BookPage } from '../../../lib/memoryBookPdf';
 
 const GELATO_API_KEY = process.env.GELATO_API_KEY!;
+const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME!;
+const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY!;
+const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET!;
 
 const SC_BASE = 'pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_250-gsm-100-lb-cover-coated-silk';
 const HC_BASE = 'pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_130-gsm-65-lb-cover-coated-silk';
@@ -19,27 +22,34 @@ const GELATO_PRODUCT_UIDS: Record<string, string> = {
   'hardcover_11x11_portrait':  `photobooks-hardcover_pf_280x280-mm-11x11-inch_${HC_BASE}_ver`,
 };
 
-async function uploadPdfToGelato(pdfBuffer: Buffer, filename: string): Promise<string> {
+async function uploadPdfToCloudinary(pdfBuffer: Buffer, filename: string): Promise<string> {
+  const crypto = await import('crypto');
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = `memory-books/${filename.replace('.pdf', '')}`;
+  const toSign = `public_id=${publicId}&resource_type=raw&timestamp=${timestamp}${CLOUDINARY_API_SECRET}`;
+  const signature = crypto.createHash('sha256').update(toSign).digest('hex');
+
   const formData = new FormData();
-  const uploadRes = await fetch('https://file.gelatoapis.com/v1/files', {
+  const arrayBuffer = pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength) as ArrayBuffer;
+  formData.append('file', new Blob([arrayBuffer], { type: 'application/pdf' }), filename);
+  formData.append('public_id', publicId);
+  formData.append('resource_type', 'raw');
+  formData.append('timestamp', String(timestamp));
+  formData.append('api_key', CLOUDINARY_API_KEY);
+  formData.append('signature', signature);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`, {
     method: 'POST',
-    headers: {
-      'X-API-KEY': GELATO_API_KEY,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      name: filename,
-      content: pdfBuffer.toString('base64'),
-    }),
+    body: formData,
   });
 
-  if (!uploadRes.ok) {
-    const text = await uploadRes.text();
-    throw new Error(`Gelato file upload failed: ${uploadRes.status} ${text}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Cloudinary upload failed: ${res.status} ${text}`);
   }
 
-  const data = await uploadRes.json();
-  return data.url as string;
+  const data = await res.json();
+  return data.secure_url as string;
 }
 
 // POST /api/test-gelato-order
@@ -129,8 +139,8 @@ export async function POST(request: NextRequest) {
     const filename = `TEST-memory-book-${eventId}-${Date.now()}.pdf`;
     let fileUrl: string;
     try {
-      fileUrl = await uploadPdfToGelato(pdfBuffer, filename);
-      console.log(`PDF uploaded to Gelato: ${fileUrl}`);
+      fileUrl = await uploadPdfToCloudinary(pdfBuffer, filename);
+      console.log(`PDF uploaded to Cloudinary: ${fileUrl}`);
     } catch (uploadErr: any) {
       console.error('UPLOAD FAILED:', uploadErr?.message);
       return Response.json({ error: `Upload failed: ${uploadErr?.message}` }, { status: 500 });
