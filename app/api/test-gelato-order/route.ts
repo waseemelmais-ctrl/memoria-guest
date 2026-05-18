@@ -122,8 +122,16 @@ export async function POST(request: NextRequest) {
       }) as any
     );
 
+    console.log(`PDF generated: ${pdfBuffer.length} bytes`);
     const filename = `TEST-memory-book-${eventId}-${Date.now()}.pdf`;
-    const fileUrl = await uploadPdfToGelato(pdfBuffer, filename);
+    let fileUrl: string;
+    try {
+      fileUrl = await uploadPdfToGelato(pdfBuffer, filename);
+      console.log(`PDF uploaded to Gelato: ${fileUrl}`);
+    } catch (uploadErr: any) {
+      console.error('UPLOAD FAILED:', uploadErr?.message);
+      return Response.json({ error: `Upload failed: ${uploadErr?.message}` }, { status: 500 });
+    }
 
     const pageCount = Math.max(30, Math.min(60, draft?.pageCount ?? 30));
 
@@ -154,16 +162,24 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    const gelatoRes = await fetch('https://order.gelatoapis.com/v4/orders', {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': GELATO_API_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(gelatoOrder),
-    });
+    console.log('Placing Gelato order...');
+    let gelatoRes: Response;
+    try {
+      gelatoRes = await fetch('https://order.gelatoapis.com/v4/orders', {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': GELATO_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(gelatoOrder),
+      });
+    } catch (orderErr: any) {
+      console.error('ORDER FETCH FAILED:', orderErr?.message);
+      return Response.json({ error: `Order fetch failed: ${orderErr?.message}` }, { status: 500 });
+    }
 
     const gelatoText = await gelatoRes.text();
+    console.log(`Gelato order response: ${gelatoRes.status} ${gelatoText.slice(0, 200)}`);
     if (!gelatoRes.ok) {
       throw new Error(`Gelato order failed: ${gelatoRes.status} ${gelatoText}`);
     }
