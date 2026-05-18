@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import React from 'react';
 import {
   Document,
   Page,
@@ -35,8 +35,6 @@ function getDims(bookSize?: string, orientation?: string): Dims {
   const matH     = contentH - mat * 2;
   return { w, h, margin, headerH, footerH, mat, contentW, contentH, matW, matH };
 }
-
-const DimsCtx = createContext<Dims>(getDims('8x11', 'portrait'));
 
 // ── Themes ─────────────────────────────────────────────────────
 export const BOOK_THEMES: Record<string, {
@@ -77,14 +75,15 @@ const PHOTO_GAP = 6;
 const CAPTION_H = 18;
 
 interface PhotoGridProps {
+  dims: Dims;
   photoUrls: string[];
   layout: 1 | 2 | 4;
   caption?: string;
   featuredIdx?: number | null;
 }
 
-function PhotoGrid({ photoUrls, layout, caption, featuredIdx }: PhotoGridProps) {
-  const { mat, matW, matH } = useContext(DimsCtx);
+function PhotoGrid({ dims, photoUrls, layout, caption, featuredIdx }: PhotoGridProps) {
+  const { mat, matW, matH } = dims;
   const hasCaption  = !!caption;
   const photoAreaH  = hasCaption ? matH - CAPTION_H - 6 : matH;
   const matStyle    = { backgroundColor: '#ffffff', padding: mat, flex: 1 };
@@ -181,9 +180,9 @@ function PhotoGrid({ photoUrls, layout, caption, featuredIdx }: PhotoGridProps) 
 }
 
 // ── Lined page ─────────────────────────────────────────────────
-function LinedPage({ theme, themeUrl }: { theme: string; themeUrl: string | null | undefined }) {
+function LinedPage({ dims, theme, themeUrl }: { dims: Dims; theme: string; themeUrl: string | null | undefined }) {
   const th = BOOK_THEMES[theme] ?? BOOK_THEMES.classic;
-  const { w, h } = useContext(DimsCtx);
+  const { w, h } = dims;
   const LINE_COUNT = 23;
   return (
     <Page size={[w, h]} style={{ backgroundColor: th.lineBg, width: w, height: h }}>
@@ -207,12 +206,12 @@ function LinedPage({ theme, themeUrl }: { theme: string; themeUrl: string | null
 
 // ── Front cover ────────────────────────────────────────────────
 function CoverPage({
-  name, yearsLabel, heroPhotoUrl, themePhotoUrl, accentColor,
+  dims, name, yearsLabel, heroPhotoUrl, themePhotoUrl, accentColor,
 }: {
-  name: string; yearsLabel: string; heroPhotoUrl: string | null;
+  dims: Dims; name: string; yearsLabel: string; heroPhotoUrl: string | null;
   themePhotoUrl: string | null | undefined; accentColor: string;
 }) {
-  const { w, h } = useContext(DimsCtx);
+  const { w, h } = dims;
   const sceneUrl   = themePhotoUrl ? `${themePhotoUrl}?w=1224&q=90&fit=crop` : null;
   const coverPhW   = w * 0.82;
   const coverPhH   = h * 0.52;
@@ -250,12 +249,13 @@ function CoverPage({
 
 // ── Back cover ─────────────────────────────────────────────────
 function BackCoverPage({
-  backPhotoUrl, themePhotoUrl,
+  dims, backPhotoUrl, themePhotoUrl,
 }: {
+  dims: Dims;
   backPhotoUrl: string | null | undefined;
   themePhotoUrl: string | null | undefined;
 }) {
-  const { w, h } = useContext(DimsCtx);
+  const { w, h } = dims;
   const sceneUrl = themePhotoUrl ? `${themePhotoUrl}?w=1224&q=90&fit=crop` : null;
   const backPhW  = w * 0.74;
   const backPhH  = h * 0.54;
@@ -319,43 +319,43 @@ export function MemoryBookDocument({
   };
 
   return (
-    <DimsCtx.Provider value={dims}>
-      <Document title={`Memory Book — ${name}`} author="Lumoriam">
+    <Document title={`Memory Book — ${name}`} author="Lumoriam">
 
-        <CoverPage
-          name={name}
-          yearsLabel={yearsLabel}
-          heroPhotoUrl={heroPhotoUrl}
-          themePhotoUrl={themePhotoUrl}
-          accentColor={th.accent}
-        />
+      <CoverPage
+        dims={dims}
+        name={name}
+        yearsLabel={yearsLabel}
+        heroPhotoUrl={heroPhotoUrl}
+        themePhotoUrl={themePhotoUrl}
+        accentColor={th.accent}
+      />
 
-        {/* Blank signature page */}
-        <Page size={[w, h]} style={{ backgroundColor: '#ffffff', width: w, height: h }} />
+      {/* Blank signature page */}
+      <Page size={[w, h]} style={{ backgroundColor: '#ffffff', width: w, height: h }} />
 
-        {bookPages.map((pg, pageIndex) => (
-          <React.Fragment key={pageIndex}>
-            <Page size={[w, h]} style={pageStyle}>
-              <Text style={{ fontSize: 8, color: '#b0a090', letterSpacing: 3, textTransform: 'uppercase', textAlign: 'center', marginBottom: 16, height: headerH }}>
-                {name} · Memories
-              </Text>
-              <PhotoGrid
-                photoUrls={pg.photoUrls}
-                layout={pg.layout}
-                caption={pg.caption}
-                featuredIdx={pg.featuredIdx}
-              />
-              <Text style={{ position: 'absolute', bottom: 16, left: 0, right: 0, fontSize: 7, color: '#c0b8a8', textAlign: 'center', letterSpacing: 1 }}>
-                {pageIndex + 1} of {bookPages.length}
-              </Text>
-            </Page>
-            <LinedPage theme={theme} themeUrl={themePhotoUrl} />
-          </React.Fragment>
-        ))}
+      {bookPages.map((pg, pageIndex) => (
+        <React.Fragment key={pageIndex}>
+          <Page size={[w, h]} style={pageStyle}>
+            <Text style={{ fontSize: 8, color: '#b0a090', letterSpacing: 3, textTransform: 'uppercase', textAlign: 'center', marginBottom: 16, height: headerH }}>
+              {name} · Memories
+            </Text>
+            <PhotoGrid
+              dims={dims}
+              photoUrls={pg.photoUrls}
+              layout={pg.layout}
+              caption={pg.caption}
+              featuredIdx={pg.featuredIdx}
+            />
+            <Text style={{ position: 'absolute', bottom: 16, left: 0, right: 0, fontSize: 7, color: '#c0b8a8', textAlign: 'center', letterSpacing: 1 }}>
+              {pageIndex + 1} of {bookPages.length}
+            </Text>
+          </Page>
+          <LinedPage dims={dims} theme={theme} themeUrl={themePhotoUrl} />
+        </React.Fragment>
+      ))}
 
-        <BackCoverPage backPhotoUrl={backCoverPhotoUrl} themePhotoUrl={themePhotoUrl} />
+      <BackCoverPage dims={dims} backPhotoUrl={backCoverPhotoUrl} themePhotoUrl={themePhotoUrl} />
 
-      </Document>
-    </DimsCtx.Provider>
+    </Document>
   );
 }
