@@ -6,9 +6,9 @@ const RENDER_DOC = (uid: string) => `users/${uid}/stats/renders`;
 const GRANT_DOC = (uid: string, txId: string) => `users/${uid}/grantedTransactions/${txId}`;
 
 const PRODUCT_CREDITS: Record<string, number> = {
-  memoriam_credits_5: 5,
-  memoriam_credits_10: 10,
-  memoriam_credits_20: 20,
+  lumoriam_credits_5: 5,
+  lumoriam_credits_10: 10,
+  lumoriam_credits_20: 20,
 };
 
 async function verifyRevenueCatPurchase(appUserId: string, productId: string, transactionId: string): Promise<boolean> {

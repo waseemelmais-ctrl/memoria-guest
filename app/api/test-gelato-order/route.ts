@@ -1,23 +1,11 @@
-import Stripe from 'stripe';
 import type { NextRequest } from 'next/server';
 import { getAdminDb } from '../../../lib/firebaseAdmin';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { createElement } from 'react';
 import { MemoryBookDocument, type BookPage } from '../../../lib/memoryBookPdf';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
 const GELATO_API_KEY = process.env.GELATO_API_KEY!;
-const GELATO_ORDERS_URL = 'https://order.gelatoapis.com/v4/orders';
 
-// Gelato naming convention: photobooks-{cover}_pf_{W}x{H}-mm-{w}x{h}-inch_{interior}_{cover-paper}_{ver|hor}
-// Confirmed from Gelato dashboard May 2026.
-// Key difference: hardcover uses cpt_130-gsm-65-lb-cover-coated-silk (not 250-gsm like softcover).
-// Landscape (horizontal) is only available for 8×11 — square sizes are portrait-only.
-
-// UIDs confirmed directly from Gelato dashboard, May 2026.
-// Softcover: vertical only, 8×8" and 8×11" only.
-// Hardcover: all three sizes vertical + 8×11" horizontal only.
 const SC_BASE = 'pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_250-gsm-100-lb-cover-coated-silk';
 const HC_BASE = 'pt_170-gsm-65lb-coated-silk_cl_4-4_ccl_4-4_bt_glued-left_ct_matt-lamination_prt_1-0_cpt_130-gsm-65-lb-cover-coated-silk';
 
@@ -32,7 +20,6 @@ const GELATO_PRODUCT_UIDS: Record<string, string> = {
 };
 
 async function uploadPdfToGelato(pdfBuffer: Buffer, filename: string): Promise<string> {
-  // Upload PDF to Gelato's file storage
   const uploadRes = await fetch('https://file.gelatoapis.com/v1/files', {
     method: 'POST',
     headers: {
@@ -54,50 +41,43 @@ async function uploadPdfToGelato(pdfBuffer: Buffer, filename: string): Promise<s
   return data.url as string;
 }
 
+// POST /api/test-gelato-order
+// Body: { eventId, coverType?, bookSize?, orientation? }
+// Creates a draftMode order — never goes to print, visible in Gelato dashboard.
 export async function POST(request: NextRequest) {
   try {
-    const { paymentIntentId } = await request.json();
-
-    if (!paymentIntentId) {
-      return Response.json({ error: 'Missing paymentIntentId' }, { status: 400 });
-    }
-
-    // Verify payment
-    const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    if (intent.status !== 'succeeded') {
-      return Response.json({ error: 'Payment not completed' }, { status: 402 });
-    }
-
-    const { eventId, email, tributeName, shippingAddress: shippingAddressRaw, coverType: metaCoverType } = intent.metadata;
-    const shippingAddress = JSON.parse(shippingAddressRaw);
+    const {
+      eventId,
+      coverType = 'hardcover',
+      bookSize = '8x11',
+      orientation = 'portrait',
+    } = await request.json();
 
     if (!eventId) {
-      return Response.json({ error: 'Missing metadata' }, { status: 400 });
+      return Response.json({ error: 'Missing eventId' }, { status: 400 });
     }
 
-    // Idempotency
+    const uidKey = `${coverType}_${bookSize}_${orientation}`;
+    const productUid = GELATO_PRODUCT_UIDS[uidKey];
+    if (!productUid) {
+      return Response.json({ error: `Unsupported config: ${uidKey}` }, { status: 400 });
+    }
+
     const db = getAdminDb();
-    const orderRef = db.collection('printOrders').doc(paymentIntentId);
-    const existing = await orderRef.get();
-    if (existing.exists) {
-      return Response.json({ ok: true, alreadyProcessed: true });
-    }
 
-    // Fetch tribute data
     const tributeSnap = await db.collection('tributes').doc(eventId).get();
     const tribute = tributeSnap.data();
     if (!tribute) {
       return Response.json({ error: 'Tribute not found' }, { status: 404 });
     }
 
-    // Check for user-configured book draft
     const draftSnap = await db
       .collection('tributes').doc(eventId)
       .collection('bookDraft').doc('current')
       .get();
     const draft = draftSnap.exists ? draftSnap.data() : null;
 
-    let heroPhotoUrl: string | null;
+    let heroPhotoUrl: string | null = null;
     let backCoverPhotoUrl: string | null = null;
     let pages: BookPage[] | undefined;
     let photoUrls: string[] = [];
@@ -112,14 +92,12 @@ export async function POST(request: NextRequest) {
 
       if (Array.isArray(draft.pages) && draft.pages.length > 0) {
         pages = draft.pages as BookPage[];
-        const allPagePhotos = pages.flatMap(p => p.photoUrls ?? []);
-        if (!heroPhotoUrl) heroPhotoUrl = allPagePhotos[0] ?? null;
+        if (!heroPhotoUrl) heroPhotoUrl = pages.flatMap(p => p.photoUrls ?? [])[0] ?? null;
       } else {
         photoUrls = draft.photoUrls ?? [];
         if (!heroPhotoUrl) heroPhotoUrl = photoUrls[0] ?? null;
       }
     } else {
-      // Fallback: all gallery photos, 4-per-page
       const photosSnap = await db
         .collection('tributes').doc(eventId)
         .collection('photos')
@@ -130,20 +108,8 @@ export async function POST(request: NextRequest) {
       heroPhotoUrl = tribute.heroPhotoUrl || photoUrls[0] || null;
     }
 
-    const name = tributeName || draft?.tributeName || tribute.deceasedName || 'In Loving Memory';
+    const name = draft?.tributeName || tribute.deceasedName || tribute.lovedOneName || 'In Loving Memory';
 
-    // Resolve product UID from user's size + orientation + cover type selection
-    const bookSize    = draft?.bookSize    ?? '8x11';
-    const orientation = draft?.orientation ?? 'portrait';
-    // coverType comes from payment metadata (set at checkout), fallback to draft
-    const coverType   = metaCoverType ?? draft?.coverType ?? 'softcover';
-    const uidKey      = `${coverType}_${bookSize}_${orientation}`;
-    const productUid  = GELATO_PRODUCT_UIDS[uidKey];
-    if (!productUid) {
-      return Response.json({ error: `Unsupported product configuration: ${uidKey}` }, { status: 400 });
-    }
-
-    // Generate PDF
     const pdfBuffer = await renderToBuffer(
       createElement(MemoryBookDocument, {
         name,
@@ -158,41 +124,39 @@ export async function POST(request: NextRequest) {
       }) as any
     );
 
-    // Use the page count the user selected (saved in draft), clamped to valid range
-    const totalPages = Math.max(30, Math.min(60, draft?.pageCount ?? 30));
-
-    // Upload PDF to Gelato
-    const filename = `memory-book-${eventId}.pdf`;
+    const filename = `TEST-memory-book-${eventId}-${Date.now()}.pdf`;
     const fileUrl = await uploadPdfToGelato(pdfBuffer, filename);
 
-    // Place Gelato order
+    const pageCount = Math.max(30, Math.min(60, draft?.pageCount ?? 30));
+
     const gelatoOrder = {
-      orderReferenceId: paymentIntentId,
-      customerReferenceId: eventId,
+      orderReferenceId: `TEST-${Date.now()}`,
+      customerReferenceId: `TEST-${eventId}`,
       currency: 'CAD',
+      draftMode: true,
       items: [
         {
-          itemReferenceId: `${paymentIntentId}-book`,
+          itemReferenceId: `TEST-${Date.now()}-book`,
           productUid,
-          pageCount: totalPages,
+          pageCount,
           files: [{ type: 'default', url: fileUrl }],
           quantity: 1,
         },
       ],
       shippingAddress: {
-        firstName: shippingAddress.firstName,
-        lastName: shippingAddress.lastName,
-        addressLine1: shippingAddress.addressLine1,
-        addressLine2: shippingAddress.addressLine2 ?? '',
-        city: shippingAddress.city,
-        state: shippingAddress.province,
-        postCode: shippingAddress.postalCode,
-        country: shippingAddress.country ?? 'CA',
-        email,
+        firstName: 'Test',
+        lastName: 'Order',
+        addressLine1: '123 Test Street',
+        addressLine2: '',
+        city: 'Toronto',
+        state: 'ON',
+        postCode: 'M5V 3A8',
+        country: 'CA',
+        email: 'waseemelmais@gmail.com',
       },
     };
 
-    const gelatoRes = await fetch(GELATO_ORDERS_URL, {
+    const gelatoRes = await fetch('https://order.gelatoapis.com/v4/orders', {
       method: 'POST',
       headers: {
         'X-API-KEY': GELATO_API_KEY,
@@ -201,37 +165,25 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(gelatoOrder),
     });
 
+    const gelatoText = await gelatoRes.text();
     if (!gelatoRes.ok) {
-      const text = await gelatoRes.text();
-      throw new Error(`Gelato order failed: ${gelatoRes.status} ${text}`);
+      throw new Error(`Gelato order failed: ${gelatoRes.status} ${gelatoText}`);
     }
 
-    const gelatoData = await gelatoRes.json();
+    const gelatoData = JSON.parse(gelatoText);
 
-    // Record order in Firestore
-    await orderRef.set({
-      eventId,
-      email,
-      tributeName: name,
-      paymentIntentId,
-      amountCents: intent.amount,
-      currency: intent.currency,
-      shippingAddress,
+    return Response.json({
+      ok: true,
+      draftMode: true,
       gelatoOrderId: gelatoData.id,
       gelatoStatus: gelatoData.status,
       productUid,
-      bookSize,
-      orientation,
-      coverType,
-      pageCount: totalPages,
-      createdAt: new Date().toISOString(),
-      type: 'print',
+      pageCount,
+      pdfFilename: filename,
+      message: 'Draft order created — check your Gelato dashboard to preview.',
     });
-
-    console.log(`Print order placed: ${gelatoData.id} for tribute ${eventId}`);
-    return Response.json({ ok: true, gelatoOrderId: gelatoData.id });
   } catch (err: any) {
-    console.error('fulfill-print-order error:', err?.message ?? err);
-    return Response.json({ error: 'Failed to fulfill print order' }, { status: 500 });
+    console.error('test-gelato-order error:', err?.message ?? err);
+    return Response.json({ error: err?.message ?? 'Failed' }, { status: 500 });
   }
 }

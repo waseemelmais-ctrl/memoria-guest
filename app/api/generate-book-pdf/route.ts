@@ -96,25 +96,38 @@ export async function POST(request: NextRequest) {
       backCoverPhotoUrl,
       theme,
       themePhotoUrl,
-      pages,       // per-page layout (preferred)
-      photoUrls,   // flat fallback
+      pages,
+      photoUrls,
+      bookSize:    draft?.bookSize    ?? '8x11',
+      orientation: draft?.orientation ?? 'portrait',
     };
 
     const pdfBuffer = await renderToBuffer(
       createElement(MemoryBookDocument, pdfData) as any
     );
 
-    // Record the order
-    await bookOrderRef.set({
+    const orderRecord = {
       eventId,
       email,
       tributeName: pdfData.name,
       paymentIntentId,
       amountCents: intent.amount,
       currency: intent.currency,
+      bookSize:    pdfData.bookSize,
+      orientation: pdfData.orientation,
+      coverType:   draft?.coverType ?? 'softcover',
       createdAt: new Date().toISOString(),
       status: 'delivered',
-    });
+    };
+
+    // Record the order (root collection for server lookups)
+    await bookOrderRef.set(orderRecord);
+
+    // Mirror to tribute subcollection so the app can read past orders
+    await db
+      .collection('tributes').doc(eventId)
+      .collection('bookOrders').doc(paymentIntentId)
+      .set(orderRecord);
 
     // Send email with PDF attached
     const fromEmail = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
@@ -135,7 +148,7 @@ export async function POST(request: NextRequest) {
             Suggested print sizes: 8.5" × 11" (letter) or A4 · Full colour · Photo paper recommended
           </p>
           <p style="color: #888; font-size: 13px; margin-top: 16px;">
-            With care,<br/>The Memoriam Team
+            With care,<br/>The Lumoriam Team
           </p>
         </div>
       `,

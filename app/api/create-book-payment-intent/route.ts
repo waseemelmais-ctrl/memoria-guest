@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const PRICES = {
-  pdf: 599, // $5.99 CAD in cents
+  pdf: 499, // $4.99 USD in cents
 };
 
 export async function POST(request: NextRequest) {
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     const intent = await stripe.paymentIntents.create({
       amount: PRICES.pdf,
-      currency: 'cad',
+      currency: 'usd',
       metadata: {
         eventId,
         email,

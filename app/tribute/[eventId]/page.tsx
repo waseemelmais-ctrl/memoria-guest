@@ -294,7 +294,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
       <div style={s.page}>
         <div style={s.centered}>
           <div style={s.goldStar}>✦</div>
-          <h1 style={s.appName}>MEMORIAM</h1>
+          <h1 style={s.appName}>LUMORIAM</h1>
           <p style={s.mutedText}>This tribute could not be found. The link may have expired or been removed.</p>
         </div>
       </div>
@@ -367,7 +367,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
               ))}
             </div>
             <a href="https://apps.apple.com/app/memoriam" target="_blank" rel="noopener noreferrer" style={s.galleryPrompt}>
-              View all {photos.length} photos in the Memoriam app →
+              View all {photos.length} photos in the Lumoriam app →
             </a>
           </section>
         )}
@@ -417,13 +417,13 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
             <div style={s.goldStar}>✦</div>
             <h3 style={s.ctaTitle}>View the full tribute</h3>
             <p style={s.ctaSubtitle}>
-              Download Memoriam to view all photos, join the tribute, and honour {tribute.lovedOneName}'s memory.
+              Download Lumoriam to view all photos, join the tribute, and honour {tribute.lovedOneName}'s memory.
             </p>
             <a
-              href={`memoriam://join/${eventId}`}
+              href={`lumoriam://join/${eventId}`}
               style={s.btnGold}
             >
-              Open in Memoriam App
+              Open in Lumoriam App
             </a>
             <a
               href="https://apps.apple.com/app/memoriam"
@@ -438,7 +438,7 @@ export default function TributePage({ params }: { params: Promise<{ eventId: str
 
         {/* ── Footer ── */}
         <footer style={s.footer}>
-          <p style={s.footerText}>Made with Memoriam · memoriam.app</p>
+          <p style={s.footerText}>Made with Lumoriam · lumoriam.ca</p>
         </footer>
 
       </div>
